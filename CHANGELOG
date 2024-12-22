@@ -1,0 +1,4 @@
+v0.1.0
+- Moved the code to React for frontEnd (due to its declarative nature compared to normal JS)
+- Added the Room joining functionality
+- Added Waiting Room Component with an ability to start the game for admin
