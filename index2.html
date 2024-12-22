@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>Socket.IO chat</title>
+    <style>
+      body { margin: 0; padding-bottom: 3rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+
+      #form { background: rgba(0, 0, 0, 0.15); padding: 0.25rem; position: fixed; bottom: 0; left: 0; right: 0; display: flex; height: 3rem; box-sizing: border-box; backdrop-filter: blur(10px); }
+      #input { border: none; padding: 0 1rem; flex-grow: 1; border-radius: 2rem; margin: 0.25rem; }
+      #input:focus { outline: none; }
+      #form > button { background: #333; border: none; padding: 0 1rem; margin: 0.25rem; border-radius: 3px; outline: none; color: #fff; }
+
+      #messages { list-style-type: none; margin: 0; padding: 0; }
+      #messages > li { padding: 0.5rem 1rem; }
+      #messages > li:nth-child(odd) { background: #efefef; }
+    </style>
+  </head>
+  <body>
+    <ul id="messages"></ul>
+
+    <button id="room-create">Create Room</button>
+
+    <form id="formRoom" action="">
+        <input id="room-id-join" placeholder="Room id" autocomplete="off" />
+        <button>Join Room</button>
+    </form>
+
+    <form id="form" action="">
+      <input id="input" placeholder="Message" autocomplete="off" />
+      <button id="toggle-btn">Disconnect</button>
+      <button>Send</button>
+    </form>
+
+    
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+
+        const socket = io({
+            auth: {
+              serverOffset: 0
+            }
+          });
+
+        const toggleButton = document.getElementById('toggle-btn');
+
+        toggleButton.addEventListener('click', (e) => {
+          e.preventDefault();
+          if (socket.connected) {
+            toggleButton.innerText = 'Connect';
+            socket.disconnect();
+          } else {
+            toggleButton.innerText = 'Disconnect';
+            socket.connect();
+          }
+        });
+
+  
+
+        const form = document.getElementById('form');
+        const input = document.getElementById('input');
+        const messages = document.getElementById('messages');
+        const roomInput = document.getElementById('room-id-join');
+        const formRoom = document.getElementById('formRoom');
+
+        form.style.display = 'none';
+
+        const room_create = document.getElementById('room-create');
+
+        // create room
+        room_create.addEventListener('click', (e) => {
+            let room_id = Math.random().toString(36).substring(7);
+            console.log(room_id);
+            socket.emit('create_room', room_id);
+            form.style.display = 'block';
+        });
+
+        // join room
+        formRoom.addEventListener('submit', (e) => {
+            e.preventDefault();
+            if (roomInput.value) {
+                socket.emit('join_room', roomInput.value);
+                roomInput.value = '';
+                form.style.display = 'block';
+            }
+        });
+
+
+
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            if (input.value) {
+            socket.emit('chat message', input.value, roomInput.value);
+            input.value = '';
+            roomInput.value = '';
+            }
+        });
+
+        socket.on('chat message', (msg, serverOffset) => {
+            const item = document.createElement('li');
+            item.textContent = msg;
+            messages.appendChild(item);
+            window.scrollTo(0, document.body.scrollHeight);
+            socket.auth.serverOffset = serverOffset;
+        });
+
+    </script>
+  </body>
+</html>
