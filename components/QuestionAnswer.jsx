@@ -8,6 +8,9 @@ export default function QuestionAnswer(props){
         const [clue2, setClue2] = useState("");
         const [jwclue, setJwclue] = useState("");
 
+        const [newWordTimer, setNewWordTimer] = useState(10);    
+        const [timerActive, setTimerActive] = useState(false);
+
         useEffect(()=>{
             function populateQuestionData(questionData) {
                 setClue1(questionData.clue1);
@@ -34,6 +37,32 @@ export default function QuestionAnswer(props){
                 }
             }
             props.socket.on("check_clue2_answer", setClue2Result);
+
+            function updateUI(gameParams) {
+                let timer = 10;
+                setTimerActive(true); 
+                setNewWordTimer(timer);
+    
+                const interval = setInterval(() => {
+                    if (timer > 0) {
+                        timer -= 1;
+                        setNewWordTimer(timer);
+                    } else {
+                        clearInterval(interval);
+                        setTimerActive(false); // Stop the timer
+                        props.socket.emit("start_game", gameParams.roomId, gameParams.numOfWords, gameParams.timePerQuestion); // Emit the start_game event
+                    }
+                }, 1000);
+            }
+    
+
+            props.socket.on("game_restart", updateUI);
+
+            return () => {
+                props.socket.off("get_question_data", populateQuestionData);
+                props.socket.off("check_clue1_answer", setClue1Result);
+                props.socket.off("check_clue2_answer", setClue2Result);
+            }
         }, []);
     
         const handleKeyDown = (event, field) => {
@@ -57,6 +86,7 @@ export default function QuestionAnswer(props){
 
     return (
         <>
+            {timerActive && <p>New Word in {newWordTimer}</p>}
             <div className="clue-1">
                 <p>{clue1}</p>
                 <input

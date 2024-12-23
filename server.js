@@ -45,7 +45,12 @@ io.on('connection',  (socket) => {
           score: 100,
           hintsAvailable: 0,
           data: data,
+          players: {}
         };
+
+        // add admin to players 
+        gameStates[roomId].players[socket.id] = { playerScoreForCurrentWord: 0 }; // TODO: dynamically update based on correct answer
+        io.to(roomId).emit('update_leaderboard', gameStates[roomId].players);
 
         // Get the question data from the state
         const currentState = gameStates[roomId];
@@ -78,15 +83,27 @@ io.on('connection',  (socket) => {
         if (currentState) {
             io.to(roomId).emit('get_score', currentState.score);
             io.to(roomId).emit('get_hints_available', currentState.hintsAvailable);
+
+            currentState.players[socket.id] = { playerScoreForCurrentWord: 0 }; // TODO: dynamically update based on correct answer
+
             const questionData = {
                 clue1: currentState.data[0].clue1,
                 clue2: currentState.data[0].clue2,
                 jwclue: currentState.data[0].jwclue,
             }
             io.to(roomId).emit('get_question_data', questionData);
+            io.to(roomId).emit('update_leaderboard', currentState.players);
+
             console.log('done')
         }
     });
+
+    socket.on('get_leaderboard', (roomId) => {
+      const currentState = gameStates[roomId];
+      if (currentState) {
+          io.to(roomId).emit('update_leaderboard', currentState.players);
+      }
+   });
 
     // socket.on('start_game', roomId => {
     //     console.log('Starting game');
@@ -98,7 +115,9 @@ io.on('connection',  (socket) => {
         console.log(`Game started in room: ${roomId}`);
         // TODO: fetch question, hint, clues from db
         console.log('Number of words:', numOfWords, 'Time per question:', timePerQuestion);
-        let totalTime = timePerQuestion*60;
+        numOfWords--; 
+        // let totalTime = timePerQuestion*60;
+        let totalTime = 3;
         let countdownTime = totalTime; 
         let gameInterval;
         let startTime;
@@ -129,10 +148,26 @@ io.on('connection',  (socket) => {
 
           console.log(countdownTime);
           io.to(roomId).emit('update_timer', countdownTime);
+
           if (countdownTime <= 0) {
             clearInterval(gameInterval);
-            io.to(roomId).emit('end_game');
+            
+            const currentState = gameStates[roomId];
+            if (currentState && currentState.players[socket.id]) {
+              currentState.players[socket.id].playerScoreForCurrentWord += currentState.score;
+              io.to(roomId).emit('update_leaderboard', currentState.players);
+              console.log("Updating Leaderboard", currentState.players);
+            }
+
+            if(numOfWords > 0){
+              // wait for 10 seconds before starting the next word
+              
+              io.to(roomId).emit("game_restart", {roomId, numOfWords, timePerQuestion});
+            }else{
+              io.to(roomId).emit('end_game');
+            }
           }
+
         }, 1000);
       });
     

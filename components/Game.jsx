@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import QuestionAnswer from "./QuestionAnswer";
 import { socket } from "../socket";
+import Leaderboard from "./Leaderboard";
 export default function Game(props) {
     const [timer, setTimer] = useState(null);
     const [score, setScore] = useState(null);
@@ -73,6 +74,8 @@ export default function Game(props) {
 
 
             <QuestionAnswer socket={socket}/>
+
+            <Leaderboard socket={socket}/>
 
             
 
