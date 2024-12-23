@@ -1,21 +1,10 @@
 import React, { useState, useEffect } from "react";
+import QuestionAnswer from "./QuestionAnswer";
+import { socket } from "../socket";
 export default function Game(props) {
-    const [field1, setField1] = useState("");
-    const [field2, setField2] = useState("");
-
-    const handleKeyDown = (event, field) => {
-        if (event.key === "Enter") {
-        if (field === "field1") {
-            console.log("Field 1 entered:", field1);
-            setField1(""); 
-        } else if (field === "field2") {
-            console.log("Field 2 entered:", field2);
-            setField2(""); 
-        }
-        }
-    };
-
     const [timer, setTimer] = useState(null);
+    const [score, setScore] = useState(null);
+    const [hintsAvailable, setHintsAvailable] = useState(0);
 
     useEffect(() => {
         function startTimer(countdownTime) {
@@ -28,51 +17,64 @@ export default function Game(props) {
             console.log('Time remaining:', remainingTime);
             setTimer(remainingTime);
         }
-    
         props.socket.on('update_timer', updateTimer);
+
+        function setInitialScore(remainingScore){
+            setScore(remainingScore);
+            console.log('Initial score set', remainingScore);
+        }
+        props.socket.on('get_score', setInitialScore);
     
+        function updateScore(remainingScore){
+            setScore(remainingScore);
+        }
+        props.socket.on('score_update_time_penalty', updateScore);
+
+        function setInitialHints(hintsAvailable){
+            if (hintsAvailable <= 3){
+                setHintsAvailable(hintsAvailable);
+            }
+        }
+
+        props.socket.on('get_hints_available', setInitialHints);
+
+        function unlockHint(hintsAvailable){
+            if (hintsAvailable <= 3){
+                setHintsAvailable(hintsAvailable);
+            }
+        }
+        props.socket.on('unlock_hint', unlockHint);
+
         function endGame(){
             console.log('Game ended');
         }
+
         props.socket.on('end_game', endGame);
     
         return () => {
           props.socket.off('game_started', startTimer);
           props.socket.off('update_timer', updateTimer);
+          props.socket.off('get_score', setInitialScore);
+          props.socket.off('score_update_time_penalty', updateScore);
+          props.socket.off('get_hints_available', setInitialHints);
+          props.socket.off('unlock_hint', unlockHint);
           props.socket.off('end_game', endGame);
         };
       }, [props.socket]);
 
+    
     return (
         <div>
             <h1>Game Component</h1>
             <p>Room id: {props.roomId}</p>
             <p className="time-txt">Time left: {timer}</p>
+            <p className="score-txt">Score: {score}</p>
+            <p className="hints-available-txt">Hints: {hintsAvailable}</p>
 
-            <div className="clue-1">
-                <input
-                    type="text"
-                    value={field1}
-                    className="clue-1-input"
-                    onChange={(e) => setField1(e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(e, "field1")}
-                    placeholder="Field 1: Type and press Enter"
-                />
-            </div>
-            <br />
-            <div className="clue-2">
-                <input
-                    type="text"
-                    value={field2}
-                    className="clue-2-input"
-                    onChange={(e) => setField2(e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(e, "field2")}
-                    placeholder="Field 2: Type and press Enter"
-                />
-            </div>
 
-            <p className="clue-3-txt">Clue 3</p>
-            <p className="answer">Answer</p>
+            <QuestionAnswer socket={socket}/>
+
+            
 
             <div className="hint-div">
                 <div>
