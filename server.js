@@ -45,11 +45,12 @@ io.on('connection',  (socket) => {
           score: 100,
           hintsAvailable: 0,
           data: data,
-          players: {}
+          players: {},
+          admin: socket.id
         };
 
         // add admin to players 
-        gameStates[roomId].players[socket.id] = { playerScoreForCurrentWord: 0 }; // TODO: dynamically update based on correct answer
+        gameStates[roomId].players[socket.id] = { playerScore: 0 }; // TODO: dynamically update based on correct answer
         io.to(roomId).emit('update_leaderboard', gameStates[roomId].players);
 
         // Get the question data from the state
@@ -84,7 +85,8 @@ io.on('connection',  (socket) => {
             io.to(roomId).emit('get_score', currentState.score);
             io.to(roomId).emit('get_hints_available', currentState.hintsAvailable);
 
-            currentState.players[socket.id] = { playerScoreForCurrentWord: 0 }; // TODO: dynamically update based on correct answer
+            currentState.players[socket.id] = { playerScore: 0 }; // TODO: dynamically update based on correct answer
+            io.to(roomId).emit('update_leaderboard', currentState.players);
 
             const questionData = {
                 clue1: currentState.data[0].clue1,
@@ -92,7 +94,6 @@ io.on('connection',  (socket) => {
                 jwclue: currentState.data[0].jwclue,
             }
             io.to(roomId).emit('get_question_data', questionData);
-            io.to(roomId).emit('update_leaderboard', currentState.players);
 
             console.log('done')
         }
@@ -154,7 +155,11 @@ io.on('connection',  (socket) => {
             
             const currentState = gameStates[roomId];
             if (currentState && currentState.players[socket.id]) {
-              currentState.players[socket.id].playerScoreForCurrentWord += currentState.score;
+              Object.keys(currentState.players).forEach(playerId => {
+                currentState.players[playerId].playerScore += currentState.score;
+                console.log("Updating Leaderboard for", playerId, currentState.score);
+              });
+              // currentState.players[socket.id].playerScore += currentState.score;
               io.to(roomId).emit('update_leaderboard', currentState.players);
               console.log("Updating Leaderboard", currentState.players);
             }
@@ -162,7 +167,7 @@ io.on('connection',  (socket) => {
             if(numOfWords > 0){
               // wait for 10 seconds before starting the next word
               
-              io.to(roomId).emit("game_restart", {roomId, numOfWords, timePerQuestion});
+              io.to(gameStates[roomId].admin).emit("game_restart", {roomId, numOfWords, timePerQuestion});
             }else{
               io.to(roomId).emit('end_game');
             }

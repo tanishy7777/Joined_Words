@@ -30,7 +30,7 @@ export default function Leaderboard(props) {
                     {Object.keys(leaderboard).map((socketId) => (
                         <tr key={socketId}>
                             <td>{socketId}</td>
-                            <td>{leaderboard[socketId].playerScoreForCurrentWord}</td>
+                            <td>{leaderboard[socketId].playerScore}</td>
                         </tr>
                     ))}
                 </tbody>
