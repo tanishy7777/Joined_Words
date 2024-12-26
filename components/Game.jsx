@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import QuestionAnswer from "./QuestionAnswer";
 import { socket } from "../socket";
 import Leaderboard from "./Leaderboard";
+import Hints from "./Hints";
 export default function Game(props) {
     const [timer, setTimer] = useState(null);
     const [score, setScore] = useState(null);
@@ -75,20 +76,10 @@ export default function Game(props) {
 
             <QuestionAnswer socket={socket} roomId={props.roomId}/>
 
-            <Leaderboard socket={socket}/>
+            <Leaderboard socket={socket} />
 
-            
+            <Hints roomId={props.roomId} socket={socket}/>
 
-            <div className="hint-div">
-                <div>
-                    <button className="hint-l1-btn">L1</button>
-                    <button className="hint-n1-btn">N1</button>
-                </div>
-                <div>
-                    <button className="hint-l2-btn">L2</button>
-                    <button className="hint-n2-btn">N2</button>
-                </div>
-            </div>
         </div>
     )
 }

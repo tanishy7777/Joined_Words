@@ -44,7 +44,7 @@ io.on('connection',  (socket) => {
           timer: null,
           score: {},  // this score is displayed on the screen
           // TODO make this a list of size => no of players [100, 100, 100,...]
-          hintsAvailable: 0,
+          hintsAvailable: {},
           data: data,
           players: {},
           admin: socket.id,
@@ -55,6 +55,7 @@ io.on('connection',  (socket) => {
         // add admin to players 
         gameStates[roomId].players[socket.id] = { playerScore: 0 }; 
         gameStates[roomId].hintsUsed[socket.id] = [false, false, false, false];
+        gameStates[roomId].hintsAvailable[socket.id] = 0;
         gameStates[roomId].score[socket.id] = 100;
         io.to(roomId).emit('update_leaderboard', gameStates[roomId].players); 
     });
@@ -66,7 +67,9 @@ io.on('connection',  (socket) => {
         socket.emit('load_game_component');
         const currentState = gameStates[roomId];
         if (currentState) {
-            io.to(roomId).emit('get_hints_available', currentState.hintsAvailable);
+            currentState.hintsAvailable[socket.id] = 0;
+
+            io.to(roomId).emit('get_hints_available', currentState.hintsAvailable[socket.id]);
 
             currentState.players[socket.id] = { playerScore: 0 }; 
             currentState.hintsUsed[socket.id] = [false, false, false, false];
@@ -102,16 +105,12 @@ io.on('connection',  (socket) => {
         
         numOfWords--; 
         // let totalTime = timePerQuestion*60;
-        let totalTime = 10;
+        let totalTime = 16;
         let countdownTime = totalTime; 
         let gameInterval;
-        let startTime;
         let timePenalty = 10;
-        let initialScore = 100;
-        let remainingScore = initialScore;
-        let hintsAvailable = 0;
+
         
-        startTime = Date.now();
         console.log(roomId);
         console.log(socket.id);
         console.log(socket.rooms); // It should list all the rooms the socket is connected to
@@ -120,21 +119,29 @@ io.on('connection',  (socket) => {
         // Added this delay to ensure that the client has loaded the game component
         setTimeout(() => {
           io.to(roomId).emit('get_question_data', questionData);
-          io.to(roomId).emit('get_score', gameStates[roomId].score[socket.id]); // Added this from join_room 
+          io.to(roomId).emit('get_score', gameStates[roomId].score[socket.id]); // Added this from join_room and reset after each loop
         }, 10);  
 
         io.to(roomId).emit('game_started', countdownTime);
-        // io.to(roomId).emit('get_score', remainingScore)
     
         gameInterval = setInterval(() => {
           countdownTime--;
           if((totalTime - countdownTime)%15==0){
-            remainingScore-=timePenalty;
-            hintsAvailable+=1;
-            gameStates[roomId].score[socket.id] = remainingScore;
-            gameStates[roomId].hintsAvailable = hintsAvailable;
-            io.to(roomId).emit('score_update_time_penalty', remainingScore);
-            io.to(roomId).emit('unlock_hint', hintsAvailable);
+            gameStates[roomId].score[socket.id] -= timePenalty;
+
+            // increase no of hints avail and reduce score accordingly
+            Object.keys(gameStates[roomId].players).forEach(playerId => {
+              console.log(gameStates[roomId].hintsUsed);
+              const usedHintsCount = gameStates[roomId].hintsUsed[playerId].filter(hint => hint).length;
+              if(gameStates[roomId].hintsAvailable[playerId] + usedHintsCount < 3){
+                gameStates[roomId].hintsAvailable[playerId] += 1;
+                console.log("Updating hintsAvailable for", playerId, gameStates[roomId].hintsAvailable[playerId]); 
+              }
+
+              io.to(playerId).emit('unlock_hint', gameStates[roomId].hintsAvailable[playerId]);
+              io.to(playerId).emit('score_update_time_penalty', gameStates[roomId].score[socket.id]);
+            });
+
           }
 
           console.log(countdownTime);
@@ -154,6 +161,14 @@ io.on('connection',  (socket) => {
             }
 
             if(numOfWords > 0){       
+              // reset hints and max_score
+              Object.keys(gameStates[roomId].players).forEach(playerId => {
+                gameStates[roomId].hintsAvailable[playerId] = 0;
+                gameStates[roomId].hintsUsed[playerId] = [false, false, false, false];
+                gameStates[roomId].score[playerId] = 100;
+                io.to(playerId).emit('get_hints_available', gameStates[roomId].hintsAvailable[socket.id]);
+              });
+
               io.to(gameStates[roomId].admin).emit("game_restart", {roomId, numOfWords, timePerQuestion});
               socket.broadcast.to(roomId).emit("next_word_in");
               console.log("Next word in");
@@ -191,6 +206,79 @@ io.on('connection',  (socket) => {
       }
       
     });
+
+    // L1, N1, L2, N2
+    socket.on("hint_l1_clicked", (roomId)=>{
+      console.log('Hint L1 clicked');
+      // check if hints available
+      if(gameStates[roomId].hintsAvailable[socket.id] > 0){
+        gameStates[roomId].hintsAvailable[socket.id] -= 1;
+        gameStates[roomId].hintsUsed[socket.id][0] = true;
+        // update score if used a hint
+        gameStates[roomId].score[socket.id] -= 10;
+        io.to(roomId).emit('update_leaderboard', gameStates[roomId].players);
+        io.to(socket.id).emit('get_hints_available', gameStates[roomId].hintsAvailable[socket.id]);
+
+        // TODO display the hint text
+
+      }else{
+        console.log('No hints available');
+      }
+    });
+    
+    socket.on("hint_n1_clicked", (roomId)=>{
+      console.log('Hint N1 clicked');
+      // check if hints available
+      if(gameStates[roomId].hintsAvailable[socket.id] > 0){
+        gameStates[roomId].hintsAvailable[socket.id] -= 1;
+        gameStates[roomId].hintsUsed[socket.id][1] = true;
+        // update score if used a hint
+        gameStates[roomId].score[socket.id] -= 10;
+        io.to(roomId).emit('update_leaderboard', gameStates[roomId].players);
+        io.to(socket.id).emit('get_hints_available', gameStates[roomId].hintsAvailable[socket.id]);
+
+        // TODO display the hint text
+
+      }else{
+        console.log('No hints available');
+      }
+    });
+
+    socket.on("hint_l2_clicked", (roomId)=>{
+      console.log('Hint L2 clicked');
+      // check if hints available
+      if(gameStates[roomId].hintsAvailable[socket.id] > 0){
+        gameStates[roomId].hintsAvailable[socket.id] -= 1;
+        gameStates[roomId].hintsUsed[socket.id][2] = true;
+        // update score if used a hint
+        gameStates[roomId].score[socket.id] -= 10;
+        io.to(roomId).emit('update_leaderboard', gameStates[roomId].players);
+        io.to(socket.id).emit('get_hints_available', gameStates[roomId].hintsAvailable[socket.id]);
+
+        // TODO display the hint text
+      }else{
+        console.log('No hints available');
+      }
+    });
+
+
+    socket.on("hint_n2_clicked", (roomId)=>{
+      console.log('Hint N2 clicked');
+      // check if hints available
+      if(gameStates[roomId].hintsAvailable[socket.id] > 0){
+        gameStates[roomId].hintsAvailable[socket.id] -= 1;
+        gameStates[roomId].hintsUsed[socket.id][3] = true;
+        // update score if used a hint
+        gameStates[roomId].score[socket.id] -= 10;
+        io.to(roomId).emit('update_leaderboard', gameStates[roomId].players);
+        io.to(socket.id).emit('get_hints_available', gameStates[roomId].hintsAvailable[socket.id]);
+        
+        // TODO display the hint text
+
+      }else{
+        console.log('No hints available');
+      }
+    })
 });
 
 server.listen(3000, () => {
