@@ -73,7 +73,7 @@ export default function Game(props) {
             <p className="hints-available-txt">Hints: {hintsAvailable}</p>
 
 
-            <QuestionAnswer socket={socket}/>
+            <QuestionAnswer socket={socket} roomId={props.roomId}/>
 
             <Leaderboard socket={socket}/>
 

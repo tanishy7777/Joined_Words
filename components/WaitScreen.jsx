@@ -9,7 +9,7 @@ export default function WaitScreen(props){
             <h1>Waiting for other player to join...</h1>
             <h3>How to play</h3>
             <p>todo: write rules and reg</p>
-            {props.isRoomAdmin && <ConfigOptions roomId={props.roomId} socket={props.socket}/>}
+            {props.isRoomAdmin && <ConfigOptions roomId={props.roomId} socket={props.socket} />}
         </div>
     )
 }

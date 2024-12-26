@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import Call from './Call';
 import io from 'socket.io-client';
 import Game from './components/Game';
@@ -9,6 +9,7 @@ export default function App() {
 
     const [roomId, setRoomId] = React.useState(null);
     const [isRoomAdmin, setIsRoomAdmin] = React.useState(false);
+    const [gameStarted, setGameStarted] = React.useState(false);
 
 
     function joinRoom(formData){
@@ -41,14 +42,28 @@ export default function App() {
             </>
         )
     }
+
+    useEffect(() => {
+        socket.on('load_game_component', () => {
+            setGameStarted(true);
+        });
+        
+        return () => {
+            socket.off('load_game_component');
+        }
+    }, []);
+
+
     
     
 
     return (
         <>
-             {!roomId ? <HandleRoom /> : <Call />}
-             <WaitScreen isRoomAdmin={isRoomAdmin} roomId={roomId} socket={socket}/>
-             <Game roomId={roomId} socket={socket}/>
+             {!roomId ? <HandleRoom /> : null}
+             {/* mount after room is created */}
+             {roomId && !gameStarted && <WaitScreen isRoomAdmin={isRoomAdmin} roomId={roomId} socket={socket}/>}
+             {/* mount Game component after waiting screen*/}
+             {gameStarted && <Game roomId={roomId} socket={socket}/>}
         </>
 
     )

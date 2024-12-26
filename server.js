@@ -42,60 +42,36 @@ io.on('connection',  (socket) => {
         console.log('room created:', roomId);
         gameStates[roomId] = {
           timer: null,
-          score: 100,
+          score: {},  // this score is displayed on the screen
+          // TODO make this a list of size => no of players [100, 100, 100,...]
           hintsAvailable: 0,
           data: data,
           players: {},
-          admin: socket.id
+          admin: socket.id,
+          totalWords: null,
+          hintsUsed: {}
         };
 
         // add admin to players 
-        gameStates[roomId].players[socket.id] = { playerScore: 0 }; // TODO: dynamically update based on correct answer
-        io.to(roomId).emit('update_leaderboard', gameStates[roomId].players);
-
-        // Get the question data from the state
-        const currentState = gameStates[roomId];
-        if (currentState) {
-            const questionData = {
-                clue1: currentState.data[0].clue1,
-                clue2: currentState.data[0].clue2,
-                jwclue: currentState.data[0].jwclue,
-            };
-
-            // Emit the data to the room, including the creator
-            io.to(roomId).emit('get_question_data', questionData);
-            console.log('Question data sent to room:', roomId, questionData);
-        }
-
-        // questionData = {
-        //   clue1: currentState.data[0].clue1,
-        //   clue2: currentState.data[0].clue2,
-        //   jwclue: currentState.data[0].jwclue,
-        // }
-        // socket.to(roomId).emit('get_question_data', questionData);
+        gameStates[roomId].players[socket.id] = { playerScore: 0 }; 
+        gameStates[roomId].hintsUsed[socket.id] = [false, false, false, false];
+        gameStates[roomId].score[socket.id] = 100;
+        io.to(roomId).emit('update_leaderboard', gameStates[roomId].players); 
     });
 
     socket.on('join_room', roomId => {
         socket.join(roomId); 
         console.log(socket.rooms);
         console.log('room joined:', roomId);
+        socket.emit('load_game_component');
         const currentState = gameStates[roomId];
-        // console.log("state: ",currentState, gameStates)
         if (currentState) {
-            io.to(roomId).emit('get_score', currentState.score);
             io.to(roomId).emit('get_hints_available', currentState.hintsAvailable);
 
-            currentState.players[socket.id] = { playerScore: 0 }; // TODO: dynamically update based on correct answer
+            currentState.players[socket.id] = { playerScore: 0 }; 
+            currentState.hintsUsed[socket.id] = [false, false, false, false];
+            currentState.score[socket.id] = 100;
             io.to(roomId).emit('update_leaderboard', currentState.players);
-
-            const questionData = {
-                clue1: currentState.data[0].clue1,
-                clue2: currentState.data[0].clue2,
-                jwclue: currentState.data[0].jwclue,
-            }
-            io.to(roomId).emit('get_question_data', questionData);
-
-            console.log('done')
         }
     });
 
@@ -106,19 +82,27 @@ io.on('connection',  (socket) => {
       }
    });
 
-    // socket.on('start_game', roomId => {
-    //     console.log('Starting game');
-    //     io.to(roomId).emit('game_started');
-    //     // start timer
-    // });
 
-    socket.on('start_game', (roomId, numOfWords, timePerQuestion)  => {
-        console.log(`Game started in room: ${roomId}`);
-        // TODO: fetch question, hint, clues from db
-        console.log('Number of words:', numOfWords, 'Time per question:', timePerQuestion);
+    socket.on('start_game', (roomId, numOfWords, timePerQuestion, isLoop)  => {
+      
+      console.log(`Game started in room: ${roomId}`);
+      console.log('Number of words:', numOfWords, 'Time per question:', timePerQuestion);
+      if(!isLoop){
+          io.to(roomId).emit('load_game_component');
+          console.log(gameStates);
+          gameStates[roomId].totalWords = numOfWords;
+        }
+        const questionData = {
+          questionIndex: gameStates[roomId].totalWords - numOfWords,
+          clue1: gameStates[roomId].data[gameStates[roomId].totalWords - numOfWords].clue1,
+          clue2: gameStates[roomId].data[gameStates[roomId].totalWords - numOfWords].clue2,
+          jwclue: gameStates[roomId].data[gameStates[roomId].totalWords - numOfWords].jwclue,
+        };
+        
+        
         numOfWords--; 
         // let totalTime = timePerQuestion*60;
-        let totalTime = 3;
+        let totalTime = 10;
         let countdownTime = totalTime; 
         let gameInterval;
         let startTime;
@@ -126,22 +110,28 @@ io.on('connection',  (socket) => {
         let initialScore = 100;
         let remainingScore = initialScore;
         let hintsAvailable = 0;
-
+        
         startTime = Date.now();
         console.log(roomId);
         console.log(socket.id);
         console.log(socket.rooms); // It should list all the rooms the socket is connected to
+        
+        // io.to(roomId).emit('get_question_data', questionData);
+        // Added this delay to ensure that the client has loaded the game component
+        setTimeout(() => {
+          io.to(roomId).emit('get_question_data', questionData);
+          io.to(roomId).emit('get_score', gameStates[roomId].score[socket.id]); // Added this from join_room 
+        }, 10);  
 
         io.to(roomId).emit('game_started', countdownTime);
-        io.to(roomId).emit('get_score', remainingScore)
+        // io.to(roomId).emit('get_score', remainingScore)
     
-        // Start the countdown timer
         gameInterval = setInterval(() => {
           countdownTime--;
           if((totalTime - countdownTime)%15==0){
             remainingScore-=timePenalty;
             hintsAvailable+=1;
-            gameStates[roomId].score = remainingScore;
+            gameStates[roomId].score[socket.id] = remainingScore;
             gameStates[roomId].hintsAvailable = hintsAvailable;
             io.to(roomId).emit('score_update_time_penalty', remainingScore);
             io.to(roomId).emit('unlock_hint', hintsAvailable);
@@ -156,18 +146,17 @@ io.on('connection',  (socket) => {
             const currentState = gameStates[roomId];
             if (currentState && currentState.players[socket.id]) {
               Object.keys(currentState.players).forEach(playerId => {
-                currentState.players[playerId].playerScore += currentState.score;
-                console.log("Updating Leaderboard for", playerId, currentState.score);
+                currentState.players[playerId].playerScore += currentState.score[socket.id];
+                console.log("Updating Leaderboard for", playerId, currentState.score[socket.id]);
               });
-              // currentState.players[socket.id].playerScore += currentState.score;
               io.to(roomId).emit('update_leaderboard', currentState.players);
               console.log("Updating Leaderboard", currentState.players);
             }
 
-            if(numOfWords > 0){
-              // wait for 10 seconds before starting the next word
-              
+            if(numOfWords > 0){       
               io.to(gameStates[roomId].admin).emit("game_restart", {roomId, numOfWords, timePerQuestion});
+              socket.broadcast.to(roomId).emit("next_word_in");
+              console.log("Next word in");
             }else{
               io.to(roomId).emit('end_game');
             }
@@ -176,14 +165,31 @@ io.on('connection',  (socket) => {
         }, 1000);
       });
     
-    socket.on('check_clue1_answer', () => {
-      console.log('Checking clue 1 answer');
-      socket.emit('check_clue1_answer', 'correct');
+    socket.on('check_clue1_answer', ({questionIndex, field1, roomId}) => {
+      console.log('Checking clue 1 answer', questionIndex, field1);
+      console.log(gameStates[roomId], roomId, gameStates);
+      if(roomId){
+        if(field1.toLowerCase() === gameStates[roomId].data[questionIndex].answer1.toLowerCase()){
+          socket.emit('check_clue1_answer', field1.toLowerCase());
+        }else{
+          socket.emit('check_clue1_answer', null);
+        }
+      }
+      
     });
 
-    socket.on('check_clue2_answer', () => {
-        console.log('Checking clue 2 answer');
-        socket.emit('check_clue2_answer', 'correct');
+    socket.on('check_clue2_answer', ({questionIndex, field2, roomId}) => {
+      console.log('Checking clue 2 answer');
+      if(roomId){
+        if(field2.toLowerCase() === gameStates[roomId].data[questionIndex].answer2.toLowerCase()){
+          socket.emit('check_clue2_answer', field2.toLowerCase());
+        }else{
+          socket.emit('check_clue2_answer', null);
+        }
+      }else{
+        console.log('Room not found');
+      }
+      
     });
 });
 

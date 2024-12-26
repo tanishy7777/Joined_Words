@@ -5,7 +5,7 @@ export default function ConfigOptions(props){
         const timePerQuestion = formData.get("time_per_question");
         // tell server that game started and fetch question, hint, clues and start timer
         console.log('Starting game with:', numOfWords, timePerQuestion);
-        props.socket.emit('start_game', props.roomId, numOfWords, timePerQuestion);
+        props.socket.emit('start_game', props.roomId, numOfWords, timePerQuestion, false);
     }
 
     return(
