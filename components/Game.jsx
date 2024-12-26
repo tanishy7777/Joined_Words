@@ -30,7 +30,7 @@ export default function Game(props) {
         function updateScore(remainingScore){
             setScore(remainingScore);
         }
-        props.socket.on('score_update_time_penalty', updateScore);
+        props.socket.on('score_update', updateScore);
 
         function setInitialHints(hintsAvailable){
             if (hintsAvailable <= 3){
@@ -57,7 +57,7 @@ export default function Game(props) {
           props.socket.off('game_started', startTimer);
           props.socket.off('update_timer', updateTimer);
           props.socket.off('get_score', setInitialScore);
-          props.socket.off('score_update_time_penalty', updateScore);
+          props.socket.off('score_update', updateScore);
           props.socket.off('get_hints_available', setInitialHints);
           props.socket.off('unlock_hint', unlockHint);
           props.socket.off('end_game', endGame);

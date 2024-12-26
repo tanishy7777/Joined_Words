@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 export default function Hints(props){
 
     const handleL1Click = () => {
@@ -20,8 +21,20 @@ export default function Hints(props){
         props.socket.emit("hint_n2_clicked", props.roomId);
     };
 
+    useEffect(() => {
+        const handleShowHint = (hint) => {
+            console.log("Hint is ", hint);
+        };
+    
+        props.socket.on("show_hint", handleShowHint);
+    
+        return () => {
+            props.socket.off("show_hint", handleShowHint);
+        };
+    }, [props.socket]);
+    
+
     // validate if enough hints are available etc, on server side coz gamestate is there
-    console.log("Room ID", props.roomId);   
     return (
         <div className="hint-div">
             <div>

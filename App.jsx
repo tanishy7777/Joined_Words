@@ -54,9 +54,6 @@ export default function App() {
     }, []);
 
 
-    
-    
-
     return (
         <>
              {!roomId ? <HandleRoom /> : null}
