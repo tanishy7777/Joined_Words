@@ -250,7 +250,7 @@ io.on('connection',  (socket) => {
         gameStates[roomId].score[socket.id] -= 10;
         io.to(roomId).emit('update_leaderboard', gameStates[roomId].players);
         io.to(socket.id).emit('get_hints_available', gameStates[roomId].hintsAvailable[socket.id]);
-        io.to(socket.id).emit('show_hint', gameStates[roomId].data[gameStates[roomId].questionIndex].clue1.substring(0, 1) + '...');
+        io.to(socket.id).emit('show_hint', gameStates[roomId].data[gameStates[roomId].questionIndex].answer1.substring(0, 1) + '...');
         io.to(socket.id).emit('score_update', gameStates[roomId].score[socket.id]);
 
         // TODO display the hint text
@@ -292,7 +292,7 @@ io.on('connection',  (socket) => {
         gameStates[roomId].score[socket.id] -= 10;
         io.to(roomId).emit('update_leaderboard', gameStates[roomId].players);
         io.to(socket.id).emit('get_hints_available', gameStates[roomId].hintsAvailable[socket.id]);
-        io.to(socket.id).emit('show_hint', gameStates[roomId].data[gameStates[roomId].questionIndex].clue2.substring(0, 1) + '...');
+        io.to(socket.id).emit('show_hint', gameStates[roomId].data[gameStates[roomId].questionIndex].answer2.substring(0, 1) + '...');
         io.to(socket.id).emit('score_update', gameStates[roomId].score[socket.id]);
 
         // TODO display the hint text
