@@ -3,6 +3,8 @@ import QuestionAnswer from "./QuestionAnswer";
 import { socket } from "../socket";
 import Leaderboard from "./Leaderboard";
 import Hints from "./Hints";
+import RoomId from "./RoomId";
+
 export default function Game(props) {
     const [timer, setTimer] = useState(null);
     const [score, setScore] = useState(null);
@@ -68,7 +70,7 @@ export default function Game(props) {
     return (
         <div>
             <h1>Game Component</h1>
-            <p>Room id: {props.roomId}</p>
+            <RoomId roomId={props.roomId} />            
             <p className="time-txt">Time left: {timer}</p>
             <p className="score-txt">Score: {score}</p>
             <p className="hints-available-txt">Hints: {hintsAvailable}</p>

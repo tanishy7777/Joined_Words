@@ -35,7 +35,7 @@ app.get('/', (req, res) => {
 let gameStates = {};
 io.on('connection',  (socket) => {
     console.log('New client connected'); 
-
+  
     socket.on('create_room', roomId => {
         socket.join(roomId); 
         console.log(socket.rooms);
@@ -62,22 +62,27 @@ io.on('connection',  (socket) => {
         io.to(roomId).emit('update_leaderboard', gameStates[roomId].players); 
     });
 
+    
+
+
     socket.on('join_room', roomId => {
-        socket.join(roomId); 
-        console.log(socket.rooms);
-        console.log('room joined:', roomId);
         // socket.emit('load_game_component');
         const currentState = gameStates[roomId];
         if (currentState) {
-            currentState.hintsAvailable[socket.id] = 0;
+          socket.join(roomId); 
+          console.log(socket.rooms);
+          console.log('room joined:', roomId);
+          currentState.hintsAvailable[socket.id] = 0;
 
-            io.to(roomId).emit('get_hints_available', currentState.hintsAvailable[socket.id]);
+          io.to(roomId).emit('get_hints_available', currentState.hintsAvailable[socket.id]);
 
-            currentState.players[socket.id] = { playerScore: 0 }; 
-            currentState.hintsUsed[socket.id] = [false, false, false, false];
-            currentState.score[socket.id] = 100;
-            currentState.cluesAnswered[socket.id] = [false, false];
-            io.to(roomId).emit('update_leaderboard', currentState.players);
+          currentState.players[socket.id] = { playerScore: 0 }; 
+          currentState.hintsUsed[socket.id] = [false, false, false, false];
+          currentState.score[socket.id] = 100;
+          currentState.cluesAnswered[socket.id] = [false, false];
+          io.to(roomId).emit('update_leaderboard', currentState.players);
+        }else{
+          console.log('Room not found');
         }
     });
 
@@ -172,6 +177,7 @@ io.on('connection',  (socket) => {
               gameStates[roomId].hintsUsed[playerId] = [false, false, false, false];
               gameStates[roomId].score[playerId] = 100;
               io.to(playerId).emit('get_hints_available', gameStates[roomId].hintsAvailable[socket.id]);
+              io.to(playerId).emit('clear_field_new_word')
             });
             
             io.to(gameStates[roomId].admin).emit("game_restart", {roomId, numOfWords, timePerQuestion});
@@ -186,31 +192,25 @@ io.on('connection',  (socket) => {
     });
     
 
-    socket.on('check_clue1_answer', ({questionIndex, field1, roomId}) => {
-      console.log('Checking clue 1 answer', questionIndex, field1);
+    socket.on('check_clue_answer', ({questionIndex, field, roomId}) => {
+      console.log('Checking clue answer', questionIndex, field);
       console.log(gameStates[roomId], roomId, gameStates);
       if(roomId){
-        if(field1.toLowerCase() === gameStates[roomId].data[questionIndex].answer1.toLowerCase()){
-          socket.emit('check_clue1_answer', field1.toLowerCase());
+        if(field.toLowerCase() === gameStates[roomId].data[questionIndex].answer1.toLowerCase()){
+          socket.emit('check_clue1_answer', field.toLowerCase());
           gameStates[roomId].cluesAnswered[socket.id][0] = true;
-        }else{
+        }else if(field.toLowerCase() === gameStates[roomId].data[questionIndex].answer2.toLowerCase()){
+          socket.emit('check_clue2_answer', field.toLowerCase());
+          gameStates[roomId].cluesAnswered[socket.id][1] = true;
+        }else if(field.toLowerCase() === gameStates[roomId].data[questionIndex].answer1.toLowerCase() + gameStates[roomId].data[questionIndex].answer2.toLowerCase()){
+          socket.emit('check_clue1_answer', gameStates[roomId].data[questionIndex].answer1.toLowerCase());
+          socket.emit('check_clue2_answer', gameStates[roomId].data[questionIndex].answer2.toLowerCase());
+          gameStates[roomId].cluesAnswered[socket.id][0] = true;
+          gameStates[roomId].cluesAnswered[socket.id][1] = true;
+        }
+        else{
           socket.emit('check_clue1_answer', null);
         }
-      }
-      
-    });
-    
-    socket.on('check_clue2_answer', ({questionIndex, field2, roomId}) => {
-      console.log('Checking clue 2 answer');
-      if(roomId){
-        if(field2.toLowerCase() === gameStates[roomId].data[questionIndex].answer2.toLowerCase()){
-          socket.emit('check_clue2_answer', field2.toLowerCase());
-          gameStates[roomId].cluesAnswered[socket.id][1] = true;
-        }else{
-          socket.emit('check_clue2_answer', null);
-        }
-      }else{
-        console.log('Room not found');
       }
       
     });

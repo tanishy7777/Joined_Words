@@ -15,6 +15,7 @@
     "express": "^4.21.2",
     "react": "^19.1.0-canary-de82912e-20241220",
     "react-dom": "^19.1.0-canary-de82912e-20241220",
+    "react-router-dom": "^7.1.1",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1"
   },

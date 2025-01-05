@@ -1,12 +1,17 @@
 import React, { useEffect, useState, useRef } from "react";
+import { use } from "react";
 export default function QuestionAnswer(props){
-        const [field1, setField1] = useState("");
-        const [field2, setField2] = useState("");
+        const [field, setField] = useState("");
+        const [flipped1, setFlipped1] = useState(false);
+        const [flipped2, setFlipped2] = useState(false);
 
         const [clue1, setClue1] = useState("");
         const [clue2, setClue2] = useState("");
         const [jwclue, setJwclue] = useState("");
 
+        const [answer1, setAnswer1] = useState("");
+        const [answer2, setAnswer2] = useState("");
+        
 
         const [questionIndex, setQuestionIndex] = useState(0);
 
@@ -20,23 +25,36 @@ export default function QuestionAnswer(props){
         useEffect(() => {
             function setClue1Result(clue1Answer){
                 if(clue1Answer && !timerActiveRef.current){
-                    setField1(clue1Answer); // TODO: make it so that user cant type again using 
+                    setFlipped1(true);
+                    setField("");
+                    setAnswer1(clue1Answer);
                     console.log("Clue 1 answer received:", clue1Answer, timerActiveRef.current); 
                 }else{
-                    setField1("");
+                    setField("");
                 }
             }
             props.socket.on("check_clue1_answer", setClue1Result);
 
             function setClue2Result(clue2Answer){
                 if(clue2Answer && !timerActiveRef.current){
-                    setField2(clue2Answer); // TODO: make it so that user cant type again using css 
+                    setFlipped2(true);
+                    setField("");
+                    setAnswer2(clue2Answer);
                     console.log("Clue 2 answer received:", clue2Answer); 
                 }else{
-                    setField2("");
+                    setField("");
                 }
             }
             props.socket.on("check_clue2_answer", setClue2Result);
+
+            function newWord(){
+                setFlipped1(false);
+                setFlipped2(false);
+                setClue1("loading...");
+                setClue2("loading...");
+                setField("");  
+            }
+            props.socket.on("clear_field_new_word", newWord);
 
         }  , []);
 
@@ -111,22 +129,15 @@ export default function QuestionAnswer(props){
             }
         }, []);
     
-        const handleKeyDown = (event, field) => {
+        const handleKeyDown = (event) => {
             if (event.key === "Enter" && !timerActiveRef.current) {
-                if (field === "field1") {
-                    console.log("Field 1 entered:", field1);
-                    //validate clue-1 on server side to prevent cheating
-                    props.socket.emit("check_clue1_answer", {questionIndex, field1, roomId});
-                } else if (field === "field2") {
-                    console.log("Field 2 entered:", field2);
-                    props.socket.emit("check_clue2_answer", {questionIndex, field2, roomId});
-                    // setField2(""); 
-                }
+                console.log("Field 1 entered:", field);
+                //validate clue-1 on server side to prevent cheating
+                props.socket.emit("check_clue_answer", {questionIndex, field, roomId});
                 
             }else if(event.key === "Enter" && timerActiveRef.current){
                 console.log("Timer active, cannot submit answer");
-                setField1("");
-                setField2
+                setField("");
             }
         };
 
@@ -138,32 +149,35 @@ export default function QuestionAnswer(props){
         <>
             {timerActiveRef.current && <p>New Word in {newWordTimer}</p>}
 
-            {/* {timerActive && <p>New Word in {newWordTimer}</p>} */}
-            <div className="clue-1">
-                <p>{clue1}</p>
-                <input
-                    type="text"
-                    value={field1}
-                    className="clue-1-input"
-                    onChange={(e) => setField1(e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(e, "field1")}
-                    placeholder="Field 1: Type and press Enter"
-                />
-            </div>
-            <br />
-            <div className="clue-2">
-                <p>{clue2}</p>
-                <input
-                    type="text"
-                    value={field2}
-                    className="clue-2-input"
-                    onChange={(e) => setField2(e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(e, "field2")}
-                    placeholder="Field 2: Type and press Enter"
-                />
+            <div className="cards">
+                <div className={`card ${flipped1 ? "flipped" : ""}`}>
+                    <div className="front">
+                        <p>{clue1}</p>
+                    </div>
+                    <div className="back">
+                        <p>{answer1}</p>
+                    </div>
+                </div>
+                <div className={`card ${flipped2 ? "flipped" : ""}`}>
+                    <div className="front">
+                        <p>{clue2}</p>
+                    </div>
+                    <div className="back">
+                        <p>{answer2}</p>
+                    </div>
+                </div>
             </div>
 
-            <p className="clue-3-txt">{jwclue}</p>
+            <input
+                    type="text"
+                    value={field}
+                    className="clue-input"
+                    onChange={(e) => setField(e.target.value)}
+                    onKeyDown={(e) => handleKeyDown(e)}
+                    placeholder="Field: Type and press Enter"
+            />
+
+            <p className="clue-3-txt">Joined Word: {jwclue}</p>
             <p className="answer">Answer display</p>
         </>
     )
