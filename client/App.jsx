@@ -1,5 +1,4 @@
 import React, { useEffect } from 'react';
-import Call from './Call';
 import io from 'socket.io-client';
 import { BrowserRouter as Router, Route, Routes, useNavigate, useParams } from 'react-router';
 import Game from './components/Game';

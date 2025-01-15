@@ -1,0 +1,18 @@
+services:
+  client:
+    build: ./client
+    container_name: client_c
+    ports:
+      - '5173:5173'
+    stdin_open: true
+    tty: true
+
+  server:
+    build: ./server
+    container_name: backend_c
+    ports:
+      - '3000:3000'
+    stdin_open: true
+    tty: true
+    environment:
+      NODE_ENV: development
