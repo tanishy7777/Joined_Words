@@ -28,7 +28,7 @@
       "globals": "^15.13.0",
       "vite": "^6.0.3"
     },
-    "proxy" : "http://localhost:3000",
+    "proxy" : "http://35.207.196.68:3000",
     "main": "eslint.config.js",
     "keywords": [],
     "author": "",
