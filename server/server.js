@@ -6,22 +6,26 @@ import cors from 'cors';
 import { getFirestore } from 'firebase-admin/firestore';
 import { dirname } from "path";
 import { fileURLToPath } from "url";
+import dotenv from 'dotenv';
+dotenv.config();
 
 const PORT = process.env.PORT || 3000;
 
 import { readFileSync } from 'fs';
 const data = JSON.parse(readFileSync('./data.json', 'utf-8'));
 
-import { createClient } from 'redis';
-import { createAdapter } from '@socket.io/redis-adapter';
+// import { createClient } from 'redis';
+// import { createAdapter } from '@socket.io/redis-adapter';
+import { Redis } from '@upstash/redis'
+const redisClient = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+})// Redis setup
+// const redisClient = createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' });
+// const pubClient = Redis.fromEnv();
+// const subClient = Redis.fromEnv();
 
-
-// Redis setup
-const redisClient = createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' });
-const pubClient = redisClient.duplicate();
-const subClient = redisClient.duplicate();
-
-await Promise.all([redisClient.connect(), pubClient.connect(), subClient.connect()]);
+// await Promise.all([redisClient.connect(), pubClient.connect(), subClient.connect()]);
 
 // Authentication and Firebase Admin SDK setup
 import admin from 'firebase-admin';
@@ -44,7 +48,7 @@ const io = new Server(server, {
         methods: ["GET", "POST"],       
         credentials: true, 
     },
-    adapter: createAdapter(pubClient, subClient)
+    // adapter: createAdapter(pubClient, subClient)
 });
 
 
@@ -75,7 +79,8 @@ class GameStateManager {
     static async createRoom(roomId, initialState) {
       try{
         const key = `gamestate:${roomId}`;
-        await redisClient.setEx(key, 3600, JSON.stringify(initialState)); // 1 hour expiry
+        // await redisClient.setEx(key, 3600, JSON.stringify(initialState)); // 1 hour expiry
+        await redisClient.set(key, JSON.stringify(initialState), { ex: 3600 });
         return roomId;
       } catch (error) {
         console.error('Redis set failed:', error);
@@ -87,7 +92,11 @@ class GameStateManager {
       try {
         const key = `gamestate:${roomId}`;
         const state = await redisClient.get(key);
-        return state ? JSON.parse(state) : null;
+        if (typeof state === 'string') {
+          return JSON.parse(state);
+        } else {
+          return state;
+        }
       } catch (error) {
         console.error('Redis get failed:', error);
         return null;
@@ -99,7 +108,8 @@ class GameStateManager {
           if (!currentState) return null;
           
           const updatedState = { ...currentState, ...updates };
-          await redisClient.setEx(`gamestate:${roomId}`, 3600, JSON.stringify(updatedState));
+          // await redisClient.setEx(`gamestate:${roomId}`, 3600, JSON.stringify(updatedState));
+          await redisClient.set(`gamestate:${roomId}`, JSON.stringify(updatedState), { ex: 3600 });
           return updatedState;
       } catch (error) {
           console.error('Redis update failed:', error);
@@ -120,10 +130,10 @@ class GameStateManager {
 // Periodic cleanup of public_rooms set (remove non-existent rooms)
 // CHANGE: Interval now every 10 minutes (was 100 minutes)
 setInterval(async () => {
-    const publicRooms = await redisClient.sMembers('public_rooms');
+    const publicRooms = await redisClient.smembers('public_rooms');
     for (const roomId of publicRooms) {
         if (!(await redisClient.exists(`gamestate:${roomId}`))) {
-            await redisClient.sRem('public_rooms', roomId);
+            await redisClient.srem('public_rooms', roomId);
         }
     }
 }, 10 * 60 * 1000); // Every 10 minutes
@@ -131,7 +141,7 @@ setInterval(async () => {
 
 // Helper: Notify all friends of a user's status change
 async function notifyFriendsStatusUpdate(uid) {
-  const friendUids = await redisClient.sMembers(`user_friends:${uid}`);
+  const friendUids = await redisClient.smembers(`user_friends:${uid}`);
   for (const friendUid of friendUids) {
     // Find if the friend is online
     for (const [id, s] of io.sockets.sockets) {
@@ -196,7 +206,7 @@ io.on('connection',  (socket) => {
         initialState.socketMap[uid] = socket.id;
 
         if (!initialState.isPrivateGame) {
-            await redisClient.sAdd('public_rooms', roomId);
+            await redisClient.sadd('public_rooms', roomId);
         }
 
         await GameStateManager.createRoom(roomId, initialState);
@@ -214,7 +224,7 @@ io.on('connection',  (socket) => {
 
         await notifyFriendsStatusUpdate(uid);
 
-        const publicRoomIds = await redisClient.sMembers('public_rooms');
+        const publicRoomIds = await redisClient.smembers('public_rooms');
         const availableRooms = [];
         
         for (const roomId of publicRoomIds) {
@@ -308,17 +318,15 @@ io.on('connection',  (socket) => {
             gameState.isPrivateGame = config.isPrivateGame;
             console.log(`Room ${roomId} privacy updated: ${config.isPrivateGame ? 'Private' : 'Public'}`);
             if (config.isPrivateGame) {
-                await redisClient.sRem('public_rooms', roomId);
+                await redisClient.srem('public_rooms', roomId);
             } else {
-                await redisClient.sAdd('public_rooms', roomId);
+                await redisClient.sadd('public_rooms', roomId);
             }
         }
         // Update Redis with the new game state
         await GameStateManager.updateRoom(roomId, gameState);
       }
 });
-
-
 
     socket.on('start_game', async (roomId, isLoop) => {
         const gameState = await GameStateManager.getRoom(roomId);
@@ -351,7 +359,6 @@ io.on('connection',  (socket) => {
 
         setTimeout(() => {
             io.to(roomId).emit('get_question_data', questionData);
-            // FIXED: Use Firebase UID
             io.to(roomId).emit('get_score', gameState.score[uid]);
         }, 10);
 
@@ -362,19 +369,30 @@ io.on('connection',  (socket) => {
             io.to(roomId).emit('update_timer', countdownTime);
 
             if ((totalTime - countdownTime) % 5 === 0) {
-                for (const playerId of Object.keys(gameState.players)) {
-                    if (!(JSON.stringify(gameState.cluesAnswered[playerId]) === JSON.stringify([true, true]))) {
-                        gameState.score[playerId] -= timePenalty;
-                        // FIXED: Use socketMap to get correct socket ID
-                        const playerSocketId = gameState.socketMap[playerId];
-                        if (playerSocketId) {
-                            io.to(playerSocketId).emit('score_update', gameState.score[playerId]);
-                        }
-                    }
+              const currentState = await GameStateManager.getRoom(roomId);
+              if (!currentState) return;
+              
+              let needsUpdate = false;
+              
+              for (const playerId of Object.keys(currentState.players)) {
+                const [clue1, clue2] = currentState.cluesAnswered[playerId] || [];
+                
+                if (!(clue1 && clue2)) {
+                  currentState.score[playerId] -= timePenalty;
+                  needsUpdate = true;
+                  
+                  const playerSocketId = currentState.socketMap[playerId];
+                  if (playerSocketId) {
+                    io.to(playerSocketId).emit('score_update', currentState.score[playerId]);
+                  }
                 }
-                await GameStateManager.updateRoom(roomId, gameState);
+              }
+              if (needsUpdate) {
+                await GameStateManager.updateRoom(roomId, {
+                score: currentState.score
+                });
+              }
             }
-
             if (countdownTime <= 0) {
               clearInterval(gameInterval);
 
@@ -422,21 +440,24 @@ io.on('connection',  (socket) => {
       if (field.toLowerCase() === gameState.data[questionIndex].answer1.toLowerCase()) {
         socket.emit('check_clue1_answer', field.toLowerCase());
         gameState.cluesAnswered[uid][0] = true;
+        await GameStateManager.updateRoom(roomId, gameState);
         console.log(`Player ${uid} answered clue1 correctly for question index ${questionIndex}`);
       } else if (field.toLowerCase() === gameState.data[questionIndex].answer2.toLowerCase()) {
         socket.emit('check_clue2_answer', field.toLowerCase());
         gameState.cluesAnswered[uid][1] = true;
+        await GameStateManager.updateRoom(roomId, gameState);
         console.log(`Player ${uid} answered clue2 correctly for question index ${questionIndex}`);
       } else if (field.toLowerCase() === gameState.data[questionIndex].answer1.toLowerCase() + gameState.data[questionIndex].answer2.toLowerCase()) {
         socket.emit('check_clue1_answer', gameState.data[questionIndex].answer1.toLowerCase());
         socket.emit('check_clue2_answer', gameState.data[questionIndex].answer2.toLowerCase());
         gameState.cluesAnswered[uid][0] = true;
         gameState.cluesAnswered[uid][1] = true;
+        await GameStateManager.updateRoom(roomId, gameState);
       } else {
         socket.emit('check_clue1_answer', null);
       }
 
-      // ⬇️ ADD THIS: Set answeredCorrectly flag if both clues are answered
+      console.log(gameState.cluesAnswered[uid][0], gameState.cluesAnswered[uid][1]);
       if (gameState.cluesAnswered[uid][0] && gameState.cluesAnswered[uid][1]) {
         gameState.players[uid].answeredCorrectly = true;
         gameState.players[uid].playerScore += gameState.score[uid];
@@ -458,8 +479,8 @@ io.on('connection',  (socket) => {
       await redisClient.setEx(`friend_request:${requestId}`, 3600, JSON.stringify({
         id: requestId, senderUid: uid, senderNickname: nickname, targetUserUid, status: 'pending', createdAt: new Date()
       }));
-      await redisClient.sAdd(`user_sent_requests:${uid}`, requestId);
-      await redisClient.sAdd(`user_received_requests:${targetUserUid}`, requestId);
+      await redisClient.sadd(`user_sent_requests:${uid}`, requestId);
+      await redisClient.sadd(`user_received_requests:${targetUserUid}`, requestId);
       let targetSocketId = null;
       for (const [id, s] of io.sockets.sockets) { // ⬅️ Find target socket by UID
         if (s.data.user?.uid === targetUserUid) { targetSocketId = id; break; }
@@ -484,12 +505,12 @@ io.on('connection',  (socket) => {
       const request = JSON.parse(requestData);
       if (request.targetUserUid !== uid) { callback({ success: false, reason: 'UNAUTHORIZED' }); return; }
       if (response === 'accepted') {
-        await redisClient.sAdd(`user_friends:${request.senderUid}`, uid);
-        await redisClient.sAdd(`user_friends:${uid}`, request.senderUid);
+        await redisClient.sadd(`user_friends:${request.senderUid}`, uid);
+        await redisClient.sadd(`user_friends:${uid}`, request.senderUid);
       }
       await redisClient.del(`friend_request:${requestId}`);
-      await redisClient.sRem(`user_sent_requests:${request.senderUid}`, requestId);
-      await redisClient.sRem(`user_received_requests:${uid}`, requestId);
+      await redisClient.srem(`user_sent_requests:${request.senderUid}`, requestId);
+      await redisClient.srem(`user_received_requests:${uid}`, requestId);
       callback({ success: true });
     } catch (error) {
       console.error('Error responding to friend request:', error);
@@ -505,7 +526,7 @@ io.on('connection',  (socket) => {
     if (!uid) return callback([]);
 
     try {
-      const friendUids = await redisClient.sMembers(`user_friends:${uid}`);
+      const friendUids = await redisClient.smembers(`user_friends:${uid}`);
       const friends = [];
       
       for (const friendUid of friendUids) {
@@ -559,7 +580,7 @@ io.on('connection',  (socket) => {
     const { uid } = socket.data.user; // ⬅️ Use socket.data.user for auth
     if (!uid) return;
     try {
-      const requestIds = await redisClient.sMembers(`user_received_requests:${uid}`);
+      const requestIds = await redisClient.smembers(`user_received_requests:${uid}`);
       const requests = [];
       for (const requestId of requestIds) {
         const requestData = await redisClient.get(`friend_request:${requestId}`);
@@ -761,7 +782,7 @@ async function cleanupPlayerDisconnect(socket, roomId, uid, nickname) {
           
           // Clean up Redis data
           await GameStateManager.deleteRoom(roomId);
-          await redisClient.sRem('public_rooms', roomId);
+          await redisClient.srem('public_rooms', roomId);
           
           // Clean up any pending invitations for this room
           const invitationKeys = await redisClient.keys(`game_invitation:*`);
