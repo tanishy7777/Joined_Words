@@ -1,0 +1,720 @@
+asyncapi: 3.0.0
+info:
+  title: Joined Words Game API
+  version: 1.0.0
+  description: |
+    Real-time events for game rooms, friends, and chat using Socket.IO.
+servers:
+  socketio:
+    protocol: socket.io
+    host: api.joinedwords.example.com
+    description: Socket.IO server for Joined Words Game API
+defaultContentType: application/json
+channels:
+  create_room:
+    address: create_room
+    messages:
+      createRoomMessage:
+        name: create_room
+        title: Create Room
+        payload:
+          type: object
+          properties: {}
+      roomCreatedMessage:
+        name: room_created
+        title: Room Created
+        payload:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            roomId:
+              type: string
+              example: abc123
+  join_room:
+    address: join_room
+    messages:
+      joinRoomMessage:
+        name: join_room
+        title: Join Room Request
+        payload:
+          type: object
+          properties:
+            roomId:
+              type: string
+              example: abc123
+      joinRoomResponse:
+        name: join_room_response
+        title: Join Room Response
+        payload:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            reason:
+              type: string
+              description: Error code if failed
+              example: ROOM_NOT_FOUND
+  join_random_room:
+    address: join_random_room
+    messages:
+      joinRandomRoomMessage:
+        name: join_random_room
+        title: Join Random Room Request
+        payload:
+          type: object
+          description: Empty payload
+      joinRandomRoomResponse:
+        name: join_random_room_response
+        title: Join Random Room Response
+        payload:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            roomId:
+              type: string
+              example: xyz789
+  get_room_info:
+    address: get_room_info
+    messages:
+      getRoomInfoMessage:
+        name: get_room_info
+        payload:
+          type: object
+          properties:
+            roomId:
+              type: string
+              example: abc123
+      roomInfo:
+        name: room_info
+        payload:
+          type: object
+          properties:
+            isAdmin:
+              type: boolean
+              example: false
+            gameStarted:
+              type: boolean
+              example: true
+  update_config:
+    address: update_config
+    messages:
+      updateConfigMessage:
+        name: update_config
+        payload:
+          type: object
+          properties:
+            roomId:
+              type: string
+            numOfWords:
+              type: integer
+            timePerQuestion:
+              type: integer
+            isPrivateGame:
+              type: boolean
+  start_game:
+    address: start_game
+    messages:
+      startGameMessage:
+        name: start_game
+        payload:
+          type: object
+          properties:
+            roomId:
+              type: string
+            isLoop:
+              type: boolean
+  get_leaderboard:
+    address: get_leaderboard
+    messages:
+      getLeaderboardMessage:
+        name: get_leaderboard
+        payload:
+          type: object
+          properties:
+            roomId:
+              type: string
+      updateLeaderboard:
+        name: update_leaderboard
+        payload:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              nickname:
+                type: string
+                example: Alice
+              playerScore:
+                type: integer
+                example: 250
+  check_clue_answer:
+    address: check_clue_answer
+    messages:
+      checkClueAnswer:
+        name: check_clue_answer
+        payload:
+          type: object
+          properties:
+            roomId:
+              type: string
+            questionIndex:
+              type: integer
+            field:
+              type: string
+  load_game_component:
+    address: load_game_component
+    messages:
+      loadGameComponent:
+        name: load_game_component
+        title: Load Game Component
+        payload:
+          type: object
+          description: Empty payload
+          properties: {}
+  game_started:
+    address: game_started
+    messages:
+      gameStarted:
+        name: game_started
+        title: Game Started
+        payload:
+          type: integer
+          description: Initial countdown time in seconds
+          example: 16
+  get_question_data:
+    address: get_question_data
+    messages:
+      getQuestionData:
+        name: get_question_data
+        title: Get Question Data
+        payload:
+          type: object
+          properties:
+            questionIndex:
+              type: integer
+              example: 0
+            clue1:
+              type: string
+              example: First part of compound word
+            clue2:
+              type: string
+              example: Second part of compound word
+            jwclue:
+              type: string
+              example: Combined word clue
+  update_timer:
+    address: update_timer
+    messages:
+      updateTimer:
+        name: update_timer
+        title: Update Timer
+        payload:
+          type: integer
+          description: Seconds remaining
+          example: 10
+  get_score:
+    address: get_score
+    messages:
+      getScore:
+        name: get_score
+        title: Get Score
+        payload:
+          type: integer
+          example: 100
+  score_update:
+    address: score_update
+    messages:
+      scoreUpdate:
+        name: score_update
+        title: Score Update
+        payload:
+          type: integer
+          example: 90
+  clear_field_new_word:
+    address: clear_field_new_word
+    messages:
+      clearFieldNewWord:
+        name: clear_field_new_word
+        title: Clear Field For New Word
+        payload:
+          type: object
+          properties: {}
+  game_restart:
+    address: game_restart
+    messages:
+      gameRestart:
+        name: game_restart
+        title: Game Restart
+        payload:
+          type: object
+          properties:
+            roomId:
+              type: string
+            numOfWords:
+              type: integer
+            timePerQuestion:
+              type: integer
+  next_word_in:
+    address: next_word_in
+    messages:
+      nextWordIn:
+        name: next_word_in
+        title: Next Word In
+        payload:
+          type: object
+          properties: {}
+  end_game:
+    address: end_game
+    messages:
+      endGame:
+        name: end_game
+        title: End Game
+        payload:
+          type: object
+          properties: {}
+  player_joined:
+    address: player_joined
+    messages:
+      playerJoined:
+        name: player_joined
+        title: Player Joined
+        payload:
+          type: object
+          properties:
+            uid:
+              type: string
+            nickname:
+              type: string
+  player_left:
+    address: player_left
+    messages:
+      playerLeft:
+        name: player_left
+        title: Player Left
+        payload:
+          type: object
+          properties:
+            uid:
+              type: string
+            nickname:
+              type: string
+            remainingPlayers:
+              type: integer
+  became_admin:
+    address: became_admin
+    messages:
+      becameAdmin:
+        name: became_admin
+        title: Became Admin
+        payload:
+          type: object
+          properties:
+            uid:
+              type: string
+            nickname:
+              type: string
+  chat_message:
+    address: chat_message
+    messages:
+      sendMessage:
+        name: chat_message
+        payload:
+          type: object
+          properties:
+            roomId:
+              type: string
+            text:
+              type: string
+      receiveMessage:
+        name: chat_message
+        payload:
+          type: object
+          properties:
+            type:
+              type: string
+              enum:
+                - user
+                - system
+            uid:
+              type: string
+            nickname:
+              type: string
+            text:
+              type: string
+            ts:
+              type: integer
+              description: Unix timestamp
+  send_friend_request:
+    address: send_friend_request
+    messages:
+      sendFriendRequest:
+        name: send_friend_request
+        payload:
+          type: object
+          properties:
+            targetUserUid:
+              type: string
+      sendFriendRequestResponse:
+        name: send_friend_request_response
+        payload:
+          type: object
+          properties:
+            success:
+              type: boolean
+            reason:
+              type: string
+  get_friend_requests:
+    address: get_friend_requests
+    messages:
+      getFriendRequests:
+        name: get_friend_requests
+        payload:
+          type: object
+      friendRequests:
+        name: friend_requests
+        payload:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              senderUid:
+                type: string
+              senderNickname:
+                type: string
+  respond_friend_request:
+    address: respond_friend_request
+    messages:
+      respondFriendRequest:
+        name: respond_friend_request
+        payload:
+          type: object
+          properties:
+            requestId:
+              type: string
+            response:
+              type: string
+              enum:
+                - accepted
+                - declined
+      respondFriendRequestResponse:
+        name: respond_friend_request_response
+        payload:
+          type: object
+          properties:
+            success:
+              type: boolean
+  get_friends:
+    address: get_friends
+    messages:
+      getFriends:
+        name: get_friends
+        payload:
+          type: object
+      friendsList:
+        name: friends_list
+        payload:
+          type: array
+          items:
+            type: object
+            properties:
+              uid:
+                type: string
+              nickname:
+                type: string
+              isOnline:
+                type: boolean
+              gameStatus:
+                type: string
+                enum:
+                  - offline
+                  - online
+                  - in_game
+              currentRoom:
+                type: string
+                nullable: true
+  invite_friend_to_game:
+    address: invite_friend_to_game
+    messages:
+      inviteFriend:
+        name: invite_friend_to_game
+        payload:
+          type: object
+          properties:
+            friendUid:
+              type: string
+      inviteFriendResponse:
+        name: invite_friend_to_game_response
+        payload:
+          type: object
+          properties:
+            success:
+              type: boolean
+            reason:
+              type: string
+  accept_game_invitation:
+    address: accept_game_invitation
+    messages:
+      acceptInvitation:
+        name: accept_game_invitation
+        payload:
+          type: object
+          properties:
+            invitationId:
+              type: string
+      acceptInvitationResponse:
+        name: accept_game_invitation_response
+        payload:
+          type: object
+          properties:
+            success:
+              type: boolean
+            roomId:
+              type: string
+operations:
+  createRoom:
+    action: send
+    channel:
+      $ref: '#/channels/create_room'
+    messages:
+      - $ref: '#/channels/create_room/messages/createRoomMessage'
+  roomCreated:
+    action: receive
+    channel:
+      $ref: '#/channels/create_room'
+    messages:
+      - $ref: '#/channels/create_room/messages/roomCreatedMessage'
+  joinRoom:
+    action: send
+    channel:
+      $ref: '#/channels/join_room'
+    messages:
+      - $ref: '#/channels/join_room/messages/joinRoomMessage'
+  joinRoomResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/join_room'
+    messages:
+      - $ref: '#/channels/join_room/messages/joinRoomResponse'
+  joinRandomRoom:
+    action: send
+    channel:
+      $ref: '#/channels/join_random_room'
+    messages:
+      - $ref: '#/channels/join_random_room/messages/joinRandomRoomMessage'
+  joinRandomRoomResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/join_random_room'
+    messages:
+      - $ref: '#/channels/join_random_room/messages/joinRandomRoomResponse'
+  getRoomInfo:
+    action: send
+    channel:
+      $ref: '#/channels/get_room_info'
+    messages:
+      - $ref: '#/channels/get_room_info/messages/getRoomInfoMessage'
+  roomInfo:
+    action: receive
+    channel:
+      $ref: '#/channels/get_room_info'
+    messages:
+      - $ref: '#/channels/get_room_info/messages/roomInfo'
+  updateConfig:
+    action: send
+    channel:
+      $ref: '#/channels/update_config'
+    messages:
+      - $ref: '#/channels/update_config/messages/updateConfigMessage'
+  startGame:
+    action: send
+    channel:
+      $ref: '#/channels/start_game'
+    messages:
+      - $ref: '#/channels/start_game/messages/startGameMessage'
+  getLeaderboard:
+    action: send
+    channel:
+      $ref: '#/channels/get_leaderboard'
+    messages:
+      - $ref: '#/channels/get_leaderboard/messages/getLeaderboardMessage'
+  updateLeaderboard:
+    action: receive
+    channel:
+      $ref: '#/channels/get_leaderboard'
+    messages:
+      - $ref: '#/channels/get_leaderboard/messages/updateLeaderboard'
+  checkClueAnswer:
+    action: send
+    channel:
+      $ref: '#/channels/check_clue_answer'
+    messages:
+      - $ref: '#/channels/check_clue_answer/messages/checkClueAnswer'
+  loadGameComponent:
+    action: receive
+    channel:
+      $ref: '#/channels/load_game_component'
+    messages:
+      - $ref: '#/channels/load_game_component/messages/loadGameComponent'
+  gameStarted:
+    action: receive
+    channel:
+      $ref: '#/channels/game_started'
+    messages:
+      - $ref: '#/channels/game_started/messages/gameStarted'
+  getQuestionData:
+    action: receive
+    channel:
+      $ref: '#/channels/get_question_data'
+    messages:
+      - $ref: '#/channels/get_question_data/messages/getQuestionData'
+  updateTimer:
+    action: receive
+    channel:
+      $ref: '#/channels/update_timer'
+    messages:
+      - $ref: '#/channels/update_timer/messages/updateTimer'
+  getScore:
+    action: receive
+    channel:
+      $ref: '#/channels/get_score'
+    messages:
+      - $ref: '#/channels/get_score/messages/getScore'
+  scoreUpdate:
+    action: receive
+    channel:
+      $ref: '#/channels/score_update'
+    messages:
+      - $ref: '#/channels/score_update/messages/scoreUpdate'
+  clearFieldNewWord:
+    action: receive
+    channel:
+      $ref: '#/channels/clear_field_new_word'
+    messages:
+      - $ref: '#/channels/clear_field_new_word/messages/clearFieldNewWord'
+  gameRestart:
+    action: receive
+    channel:
+      $ref: '#/channels/game_restart'
+    messages:
+      - $ref: '#/channels/game_restart/messages/gameRestart'
+  nextWordIn:
+    action: receive
+    channel:
+      $ref: '#/channels/next_word_in'
+    messages:
+      - $ref: '#/channels/next_word_in/messages/nextWordIn'
+  endGame:
+    action: receive
+    channel:
+      $ref: '#/channels/end_game'
+    messages:
+      - $ref: '#/channels/end_game/messages/endGame'
+  playerJoined:
+    action: receive
+    channel:
+      $ref: '#/channels/player_joined'
+    messages:
+      - $ref: '#/channels/player_joined/messages/playerJoined'
+  playerLeft:
+    action: receive
+    channel:
+      $ref: '#/channels/player_left'
+    messages:
+      - $ref: '#/channels/player_left/messages/playerLeft'
+  becameAdmin:
+    action: receive
+    channel:
+      $ref: '#/channels/became_admin'
+    messages:
+      - $ref: '#/channels/became_admin/messages/becameAdmin'
+  sendChatMessage:
+    action: send
+    channel:
+      $ref: '#/channels/chat_message'
+    messages:
+      - $ref: '#/channels/chat_message/messages/sendMessage'
+  receiveChatMessage:
+    action: receive
+    channel:
+      $ref: '#/channels/chat_message'
+    messages:
+      - $ref: '#/channels/chat_message/messages/receiveMessage'
+  sendFriendRequest:
+    action: send
+    channel:
+      $ref: '#/channels/send_friend_request'
+    messages:
+      - $ref: '#/channels/send_friend_request/messages/sendFriendRequest'
+  sendFriendRequestResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/send_friend_request'
+    messages:
+      - $ref: '#/channels/send_friend_request/messages/sendFriendRequestResponse'
+  getFriendRequests:
+    action: send
+    channel:
+      $ref: '#/channels/get_friend_requests'
+    messages:
+      - $ref: '#/channels/get_friend_requests/messages/getFriendRequests'
+  friendRequests:
+    action: receive
+    channel:
+      $ref: '#/channels/get_friend_requests'
+    messages:
+      - $ref: '#/channels/get_friend_requests/messages/friendRequests'
+  respondFriendRequest:
+    action: send
+    channel:
+      $ref: '#/channels/respond_friend_request'
+    messages:
+      - $ref: '#/channels/respond_friend_request/messages/respondFriendRequest'
+  respondFriendRequestResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/respond_friend_request'
+    messages:
+      - $ref: >-
+          #/channels/respond_friend_request/messages/respondFriendRequestResponse
+  getFriends:
+    action: send
+    channel:
+      $ref: '#/channels/get_friends'
+    messages:
+      - $ref: '#/channels/get_friends/messages/getFriends'
+  friendsList:
+    action: receive
+    channel:
+      $ref: '#/channels/get_friends'
+    messages:
+      - $ref: '#/channels/get_friends/messages/friendsList'
+  inviteFriend:
+    action: send
+    channel:
+      $ref: '#/channels/invite_friend_to_game'
+    messages:
+      - $ref: '#/channels/invite_friend_to_game/messages/inviteFriend'
+  inviteFriendResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/invite_friend_to_game'
+    messages:
+      - $ref: '#/channels/invite_friend_to_game/messages/inviteFriendResponse'
+  acceptGameInvitation:
+    action: send
+    channel:
+      $ref: '#/channels/accept_game_invitation'
+    messages:
+      - $ref: '#/channels/accept_game_invitation/messages/acceptInvitation'
+  acceptGameInvitationResponse:
+    action: receive
+    channel:
+      $ref: '#/channels/accept_game_invitation'
+    messages:
+      - $ref: '#/channels/accept_game_invitation/messages/acceptInvitationResponse'
