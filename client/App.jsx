@@ -11,28 +11,48 @@ export default function App() {
     const [isRoomAdmin, setIsRoomAdmin] = React.useState(false);
     const [gameStarted, setGameStarted] = React.useState(false);
 
- 
-
     
     const createRoom = (navigate) => {
-        let room = Math.random().toString(36).substring(7);
+        // handle room id generation on ser
         setIsRoomAdmin(true);
-        setRoomId(room);
-        console.log("created room:", room);
-        socket.emit('create_room', room);
-        navigate(`/room/${room}`);
+        socket.emit('create_room', (room) => {
+            setRoomId(room);
+            navigate(`/room/${room}`);
+        });
     }
+
+    const joinRandomRoom = (navigate) => {
+        socket.emit('join_random_room', (response) => {
+            if (response.success) {
+                setRoomId(response.roomId);
+                navigate(`/room/${response.roomId}`);
+            } else {
+                alert('No public rooms available. Please create a new room.');
+            }
+        });
+    };
     
     const joinRoom = (navigate, formData) => {
         const room = formData.get("roomId");
-        if(room){
-            setRoomId(room);
-            console.log('Room joined:', room);
-            socket.emit('join_room', room);
-            navigate(`/room/${room}`);
-        }
-    }
-    
+        if (!room) return;
+
+        socket.emit('join_room', room, (response) => {
+            if (response.success) {
+                setRoomId(room);
+                navigate(`/room/${room}`);
+            } else {
+                let errorMessage = "Join failed";
+                if (response.reason === 'ROOM_NOT_FOUND') {
+                    errorMessage = "Room not found!";
+                } else if (response.reason === 'PRIVATE_GAME') {
+                    errorMessage = "This game is private";
+                }
+                alert(errorMessage);
+            }
+        });
+    };
+
+        
 
     function HandleRoom(){
         let navigate = useNavigate();
@@ -40,6 +60,11 @@ export default function App() {
         return (
             <>
                 <div className='room-div'>
+                    <div className='join-random-div'>
+                        <button id='join-random-btn' onClick={() => joinRandomRoom(navigate)}>
+                            Join Random Room
+                        </button>
+                    </div>
                     <div className='join-room-div'>
                         <form onSubmit={(e) => {
                             e.preventDefault();

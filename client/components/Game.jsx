@@ -2,13 +2,11 @@ import React, { useState, useEffect } from "react";
 import QuestionAnswer from "./QuestionAnswer";
 import { socket } from "../socket";
 import Leaderboard from "./Leaderboard";
-import Hints from "./Hints";
 import RoomId from "./RoomId";
 
 export default function Game(props) {
     const [timer, setTimer] = useState(null);
     const [score, setScore] = useState(null);
-    const [hintsAvailable, setHintsAvailable] = useState(0);
 
     useEffect(() => {
         function startTimer(countdownTime) {
@@ -34,21 +32,6 @@ export default function Game(props) {
         }
         props.socket.on('score_update', updateScore);
 
-        function setInitialHints(hintsAvailable){
-            if (hintsAvailable <= 3){
-                setHintsAvailable(hintsAvailable);
-            }
-        }
-
-        props.socket.on('get_hints_available', setInitialHints);
-
-        function unlockHint(hintsAvailable){
-            if (hintsAvailable <= 3){
-                setHintsAvailable(hintsAvailable);
-            }
-        }
-        props.socket.on('unlock_hint', unlockHint);
-
         function endGame(){
             console.log('Game ended');
         }
@@ -60,8 +43,6 @@ export default function Game(props) {
           props.socket.off('update_timer', updateTimer);
           props.socket.off('get_score', setInitialScore);
           props.socket.off('score_update', updateScore);
-          props.socket.off('get_hints_available', setInitialHints);
-          props.socket.off('unlock_hint', unlockHint);
           props.socket.off('end_game', endGame);
         };
       }, [props.socket]);
@@ -73,14 +54,11 @@ export default function Game(props) {
             <RoomId roomId={props.roomId} />            
             <p className="time-txt">Time left: {timer}</p>
             <p className="score-txt">Score: {score}</p>
-            <p className="hints-available-txt">Hints: {hintsAvailable}</p>
 
 
             <QuestionAnswer socket={socket} roomId={props.roomId}/>
 
             <Leaderboard socket={socket} />
-
-            <Hints roomId={props.roomId} socket={socket}/>
 
         </div>
     )

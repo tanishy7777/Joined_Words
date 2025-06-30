@@ -1,4 +1,3 @@
-
 import express from 'express';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
@@ -8,90 +7,180 @@ import cors from 'cors';
 import { dirname } from "path";
 import { fileURLToPath } from "url";
 
+import { createAdapter } from '@socket.io/redis-adapter';
+import { createClient } from 'redis';
+
 const PORT = process.env.PORT || 3000;
-
-// Define __dirname manually
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
 
 import { readFileSync } from 'fs';
 const data = JSON.parse(readFileSync('./data.json', 'utf-8'));
+
+
+// Redis Setup
+const redisClient = createClient({
+    url: process.env.REDIS_URL || 'redis://localhost:6379'
+});
+
+const pubClient = redisClient.duplicate();
+const subClient = redisClient.duplicate();
+
+await Promise.all([
+    redisClient.connect(),
+    pubClient.connect(),
+    subClient.connect()
+]);
 
 const app = express();
 const server = createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: "http://35.207.196.68:5173", 
+        // origin: "http://35.207.196.68:5173",
+        origin: "http://localhost:5173", 
         methods: ["GET", "POST"],       
         credentials: true, 
     },
+    adapter: createAdapter(pubClient, subClient)
 });
 
 
 app.use(cors({
-    origin: "http://35.207.196.68:5173",
+    origin: "http://localhost:5173",
+    // origin: "http://35.207.196.68:5173",
     methods: ["GET", "POST"],
     credentials: true,
 }));
 
 
 app.get('/', (req, res) => {
-    res.sendFile(join(__dirname, 'index.html'));
+    res.send('Hello World from Joined Words Server!');
 });
+
+// Game State Management with Redis
+class GameStateManager {
+    static async createRoom(roomId, initialState) {
+        const key = `gamestate:${roomId}`;
+        await redisClient.setEx(key, 3600, JSON.stringify(initialState)); // 1 hour expiry
+        return roomId;
+    }
+
+    static async getRoom(roomId) {
+        const key = `gamestate:${roomId}`;
+        const state = await redisClient.get(key);
+        return state ? JSON.parse(state) : null;
+    }
+
+    static async updateRoom(roomId, updates) {
+        const currentState = await this.getRoom(roomId);
+        if (currentState) {
+            const updatedState = { ...currentState, ...updates };
+            await redisClient.setEx(`gamestate:${roomId}`, 3600, JSON.stringify(updatedState));
+            return updatedState;
+        }
+        return null;
+    }
+
+    static async deleteRoom(roomId) {
+        await redisClient.del(`gamestate:${roomId}`);
+    }
+}
 
 let gameStates = {};
 io.on('connection',  (socket) => {
-    console.log('New client connected'); 
+  console.log('New client connected'); 
   
-    socket.on('create_room', roomId => {
-        socket.join(roomId); 
-        console.log(socket.rooms);
-        console.log('room created:', roomId);
-        gameStates[roomId] = {
-          questionIndex: 0,
-          timer: null,
-          score: {},  // this score is displayed on the screen
-          hintsAvailable: {},
-          data: data,
-          players: {},
-          admin: socket.id,
-          totalWords: null,
-          hintsUsed: {},
-          cluesAnswered: {},
+    let rooms = new Set();
+    const publicRooms = new Set();
+    socket.on('create_room', async (callback) => {
+        let roomId;
+        do {
+            roomId = Math.random().toString(36).substring(2, 10);
+        } while (await GameStateManager.getRoom(roomId));
+        
+        const initialState = {
+            questionIndex: 0,
+            timer: null,
+            score: {},  // this score is displayed on the screen
+            data: data,
+            players: {},
+            admin: socket.id,
+            totalWords: null,
+            cluesAnswered: {},
+            isPrivateGame: true,
+            numOfWords: 3,
+            timePerQuestion: 1,
         };
 
-        // add admin to players 
-        gameStates[roomId].players[socket.id] = { playerScore: 0 }; 
-        gameStates[roomId].hintsUsed[socket.id] = [false, false, false, false];
-        gameStates[roomId].hintsAvailable[socket.id] = 0;
-        gameStates[roomId].score[socket.id] = 100;
-        gameStates[roomId].cluesAnswered[socket.id] = [false, false];
-        io.to(roomId).emit('update_leaderboard', gameStates[roomId].players); 
+        initialState.players[socket.id] = { playerScore: 0 };
+        initialState.score[socket.id] = 100;
+        initialState.cluesAnswered[socket.id] = [false, false];
+
+        await GameStateManager.createRoom(roomId, initialState);
+        socket.join(roomId);
+        console.log('room created:', roomId);
+        io.to(roomId).emit('update_leaderboard', initialState.players);
+        rooms.add(roomId);
+        publicRooms.add(roomId);
+        callback(roomId);
     });
 
-    
+  
+    socket.on('join_random_room', (callback) => {
+        const availableRooms = [];
+        
+        for (const [roomId, state] of Object.entries(gameStates)) {
+            if (!state.isPrivateGame && state.totalWords === null) {
+                availableRooms.push(roomId);
+            }
+        }
+        
+        if (availableRooms.length === 0) {
+            callback({ success: false, reason: 'NO_PUBLIC_ROOMS' });
+            return;
+        }
+        
+        const randomRoom = availableRooms[Math.floor(Math.random() * availableRooms.length)];
+        socket.join(randomRoom);
+        
+        // Initialize player state
+        const currentState = gameStates[randomRoom];
+        currentState.players[socket.id] = { playerScore: 0 };
+        currentState.score[socket.id] = 100;
+        currentState.cluesAnswered[socket.id] = [false, false];
+        
+        // Update clients
+        io.to(randomRoom).emit('update_leaderboard', currentState.players);
+        
+        callback({ success: true, roomId: randomRoom });
+    });
 
 
-    socket.on('join_room', roomId => {
-        // socket.emit('load_game_component');
-        const currentState = gameStates[roomId];
-        if (currentState) {
-          socket.join(roomId); 
-          console.log(socket.rooms);
-          console.log('room joined:', roomId);
-          currentState.hintsAvailable[socket.id] = 0;
-
-          io.to(roomId).emit('get_hints_available', currentState.hintsAvailable[socket.id]);
-
-          currentState.players[socket.id] = { playerScore: 0 }; 
-          currentState.hintsUsed[socket.id] = [false, false, false, false];
-          currentState.score[socket.id] = 100;
-          currentState.cluesAnswered[socket.id] = [false, false];
-          io.to(roomId).emit('update_leaderboard', currentState.players);
-        }else{
-          console.log('Room not found');
+    socket.on('join_room', (roomId, callback) => {
+        const currentState = gameStates[roomId];        
+        if (!currentState) {
+            console.log('Room not found:', roomId);
+            if (typeof callback === 'function') {
+                callback({ success: false, reason: 'ROOM_NOT_FOUND' });
+            }
+            return;
+        }
+        // 4. Allow joining
+        socket.join(roomId);
+        console.log('Room joined:', roomId, 'Socket ID:', socket.id);
+        
+        // 5. Initialize player state
+        currentState.players[socket.id] = { playerScore: 0 };
+        currentState.score[socket.id] = 100;
+        currentState.cluesAnswered[socket.id] = [false, false];
+        
+        // 6. Update all clients
+        io.to(roomId).emit('update_leaderboard', currentState.players);
+        
+        // 7. Send success response
+        if (typeof callback === 'function') {
+            callback({ success: true });
         }
     });
+    
 
     socket.on('get_leaderboard', (roomId) => {
       const currentState = gameStates[roomId];
@@ -100,17 +189,55 @@ io.on('connection',  (socket) => {
       }
    });
 
-
-    socket.on('start_game', (roomId, numOfWords, timePerQuestion, isLoop)  => {
-
-      
-      console.log(`Game started in room: ${roomId}`);
-      console.log('Number of words:', numOfWords, 'Time per question:', timePerQuestion);
-      if(!isLoop){
-        io.to(roomId).emit('load_game_component');
-        console.log(gameStates);
-        gameStates[roomId].totalWords = numOfWords;
+    socket.on('update_config', (roomId, config) => {
+      const gameState = gameStates[roomId];
+      if (gameState) {
+          if (config.numOfWords !== undefined) {
+              gameState.numOfWords = config.numOfWords;
+          }
+          if (config.timePerQuestion !== undefined) {
+              gameState.timePerQuestion = config.timePerQuestion;
+          }
+          if (config.isPrivateGame !== undefined) {
+              gameState.isPrivateGame = config.isPrivateGame;
+              console.log(`Room ${roomId} privacy updated: ${config.isPrivateGame ? 'Private' : 'Public'}`);
+              if (config.isPrivateGame) {
+                  publicRooms.delete(roomId);
+              } else {
+                  publicRooms.add(roomId);
+              }
+          }
       }
+});
+
+
+
+    socket.on('start_game', (roomId, isLoop)  => {
+
+      const gameState = gameStates[roomId];
+      if (!gameState) return;
+
+      // Destructure ALL config values with defaults
+      const { 
+          numOfWords = 3,
+          timePerQuestion = 1,
+          isPrivateGame = false
+      } = gameState;
+
+      console.log(`Starting game with config:`, {
+          numOfWords,
+          timePerQuestion,
+          isPrivateGame
+      });
+
+      // Your existing game start logic using these values...
+      if(!isLoop) {
+          io.to(roomId).emit('load_game_component');
+          gameState.totalWords = numOfWords;
+      }
+
+      console.log(`Game started in room: ${roomId}`);
+      console.log('Number of words:', numOfWords, 'Time per question:', timePerQuestion, 'Is Private Game:', isPrivateGame, 'Is Loop:', isLoop);
       const questionData = {
         questionIndex: gameStates[roomId].totalWords - numOfWords,
         clue1: gameStates[roomId].data[gameStates[roomId].totalWords - numOfWords].clue1,
@@ -119,7 +246,6 @@ io.on('connection',  (socket) => {
       };
 
       gameStates[roomId].questionIndex = gameStates[roomId].totalWords - numOfWords;
-      
       
       numOfWords--; 
       // let totalTime = timePerQuestion*60;
@@ -149,12 +275,6 @@ io.on('connection',  (socket) => {
           Object.keys(gameStates[roomId].players).forEach(playerId => {
             if(!(JSON.stringify(gameStates[roomId].cluesAnswered[playerId]) === JSON.stringify([true, true]))){
               gameStates[roomId].score[playerId] -= timePenalty;
-              const usedHintsCount = gameStates[roomId].hintsUsed[playerId].filter(hint => hint).length;
-              if(gameStates[roomId].hintsAvailable[playerId] + usedHintsCount < 3){
-                gameStates[roomId].hintsAvailable[playerId] += 1;
-                console.log("Updating hintsAvailable for", playerId, gameStates[roomId].hintsAvailable[playerId]); 
-              }
-              io.to(playerId).emit('unlock_hint', gameStates[roomId].hintsAvailable[playerId]);
               io.to(playerId).emit('score_update', gameStates[roomId].score[socket.id]);
             }            
           });
@@ -178,12 +298,9 @@ io.on('connection',  (socket) => {
           }
           
           if(numOfWords > 0){       
-            // reset hints and max_score
+            // reset max_score
             Object.keys(gameStates[roomId].players).forEach(playerId => {
-              gameStates[roomId].hintsAvailable[playerId] = 0;
-              gameStates[roomId].hintsUsed[playerId] = [false, false, false, false];
               gameStates[roomId].score[playerId] = 100;
-              io.to(playerId).emit('get_hints_available', gameStates[roomId].hintsAvailable[socket.id]);
               io.to(playerId).emit('clear_field_new_word')
             });
             
@@ -222,92 +339,10 @@ io.on('connection',  (socket) => {
       
     });
 
-    // TODO: allow to retrive hints only after for those clues that havent been answered (done)
-    // TODO dont allow same hint to be used again (done)
     // TODO: Use react router to have shareable links for rooms
-    // TODO display the hint text
-
-    // L1, N1, L2, N2
-    socket.on("hint_l1_clicked", (roomId)=>{
-      console.log('Hint L1 clicked');
-      // check if hints available
-      if(gameStates[roomId].hintsAvailable[socket.id] > 0 && gameStates[roomId].hintsUsed[socket.id][0] === false && gameStates[roomId].cluesAnswered[socket.id][0] === false){
-        
-        gameStates[roomId].hintsAvailable[socket.id] -= 1;
-        gameStates[roomId].hintsUsed[socket.id][0] = true;
-        // update score if used a hint
-        gameStates[roomId].score[socket.id] -= 10;
-        io.to(roomId).emit('update_leaderboard', gameStates[roomId].players);
-        io.to(socket.id).emit('get_hints_available', gameStates[roomId].hintsAvailable[socket.id]);
-        io.to(socket.id).emit('show_hint', gameStates[roomId].data[gameStates[roomId].questionIndex].answer1.length);
-        io.to(socket.id).emit('score_update', gameStates[roomId].score[socket.id]);
-
-      }else{
-        console.log('No hints available');
-      }
-    });
-    
-    socket.on("hint_n1_clicked", (roomId)=>{
-      console.log('Hint N1 clicked');
-      // check if hints available
-      if(gameStates[roomId].hintsAvailable[socket.id] > 0 && gameStates[roomId].hintsUsed[socket.id][1] === false && gameStates[roomId].cluesAnswered[socket.id][0] === false){
-        gameStates[roomId].hintsAvailable[socket.id] -= 1;
-        gameStates[roomId].hintsUsed[socket.id][1] = true;
-        // update score if used a hint
-        gameStates[roomId].score[socket.id] -= 10;
-        io.to(roomId).emit('update_leaderboard', gameStates[roomId].players);
-        io.to(socket.id).emit('get_hints_available', gameStates[roomId].hintsAvailable[socket.id]);
-        io.to(socket.id).emit('show_hint', gameStates[roomId].data[gameStates[roomId].questionIndex].answer1.substring(0, 1) + '...');
-        io.to(socket.id).emit('score_update', gameStates[roomId].score[socket.id]);
-
-        // TODO display the hint text
-
-      }else{
-        console.log('No hints available');
-      }
-    });
-
-    socket.on("hint_l2_clicked", (roomId)=>{
-      console.log('Hint L2 clicked');
-      // check if hints available
-      if(gameStates[roomId].hintsAvailable[socket.id] > 0 && gameStates[roomId].hintsUsed[socket.id][2] === false && gameStates[roomId].cluesAnswered[socket.id][1] === false){
-        gameStates[roomId].hintsAvailable[socket.id] -= 1;
-        gameStates[roomId].hintsUsed[socket.id][2] = true;
-        // update score if used a hint
-        gameStates[roomId].score[socket.id] -= 10;
-        io.to(roomId).emit('update_leaderboard', gameStates[roomId].players);
-        io.to(socket.id).emit('get_hints_available', gameStates[roomId].hintsAvailable[socket.id]);
-        io.to(socket.id).emit('show_hint', gameStates[roomId].data[gameStates[roomId].questionIndex].answer2.length);
-        io.to(socket.id).emit('score_update', gameStates[roomId].score[socket.id]);
 
 
-        // TODO display the hint text
-      }else{
-        console.log('No hints available');
-      }
-    });
 
-
-    socket.on("hint_n2_clicked", (roomId)=>{
-      console.log('Hint N2 clicked');
-      // check if hints available
-      console.log(gameStates[roomId].hintsAvailable[socket.id], gameStates[roomId].hintsUsed[3], gameStates[roomId].cluesAnswered[socket.id][1]);
-      if(gameStates[roomId].hintsAvailable[socket.id] > 0 && gameStates[roomId].hintsUsed[socket.id][3] === false && gameStates[roomId].cluesAnswered[socket.id][1] === false){
-        gameStates[roomId].hintsAvailable[socket.id] -= 1;
-        gameStates[roomId].hintsUsed[socket.id][3] = true;
-        // update score if used a hint
-        gameStates[roomId].score[socket.id] -= 10;
-        io.to(roomId).emit('update_leaderboard', gameStates[roomId].players);
-        io.to(socket.id).emit('get_hints_available', gameStates[roomId].hintsAvailable[socket.id]);
-        io.to(socket.id).emit('show_hint', gameStates[roomId].data[gameStates[roomId].questionIndex].answer2.substring(0, 1) + '...');
-        io.to(socket.id).emit('score_update', gameStates[roomId].score[socket.id]);
-
-        // TODO display the hint text
-
-      }else{
-        console.log('No hints available');
-      }
-    })
 });
 
 server.listen(PORT, '0.0.0.0', () => {

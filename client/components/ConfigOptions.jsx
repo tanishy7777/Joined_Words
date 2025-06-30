@@ -1,58 +1,79 @@
-export default function ConfigOptions(props){
-    function startGame(formData){
-        console.log('Starting game');
-        const numOfWords =  formData.get("num_of_words");
-        const timePerQuestion = formData.get("time_per_question");
-        // tell server that game started and fetch question, hint, clues and start timer
-        console.log('Starting game with:', numOfWords, timePerQuestion);
-        props.socket.emit('start_game', props.roomId, numOfWords, timePerQuestion, false);
-    }
+export default function ConfigOptions(props) {
+    const handleConfigChange = (setting, value) => {
+        props.socket.emit('update_config', props.roomId, {
+            [setting]: value
+        });
+    };
 
-    return(
-        <>
-            <div className="config-options-div">
-                <h3>Game Configuration</h3>
-                <form action={startGame}>
-                    <fieldset id="num-of-words">
-                        <legend>Number of words</legend>
-                        <label>
-                            <input type="radio" name="num_of_words" value={1}></input>
-                            1 word
-                        </label>
+    const startGame = (e) => {
+        e.preventDefault();
+        props.socket.emit('start_game', props.roomId, false);
+    };
 
-                        <label>
-                            <input type="radio" name="num_of_words" value={3} defaultChecked={true}></input>
-                            3 words
+    return (
+        <div className="config-options-div">
+            <h3>Game Configuration</h3>
+            <form onSubmit={startGame}>
+                {/* Number of words field */}
+                <fieldset id="num-of-words">
+                    <legend>Number of words</legend>
+                    {[1, 3, 5].map(num => (
+                        <label key={num}>
+                            <input
+                                type="radio"
+                                name="num_of_words"
+                                value={num}
+                                defaultChecked={num === 3}
+                                onChange={(e) => handleConfigChange('numOfWords', Number(e.target.value))}
+                            />
+                            {num} word{num !== 1 ? 's' : ''}
                         </label>
+                    ))}
+                </fieldset>
 
-                        <label>
-                            <input type="radio" name="num_of_words" value={5} ></input>
-                            5 words
+                {/* Time per question field */}
+                <fieldset id="time-per-question">
+                    <legend>Time per Question</legend>
+                    {[1, 2, 3].map(time => (
+                        <label key={time}>
+                            <input
+                                type="radio"
+                                name="time_per_question"
+                                value={time}
+                                defaultChecked={time === 1}
+                                onChange={(e) => handleConfigChange('timePerQuestion', Number(e.target.value))}
+                            />
+                            {time} min
                         </label>
-                        
-                    </fieldset>
+                    ))}
+                </fieldset>
 
-                    <fieldset id="time-per-question">
-                        <legend>Time per Question</legend>
-                        <label>
-                            <input type="radio" name="time_per_question" value={1} defaultChecked={true}></input>
-                            1 min
-                        </label>
-                        <label>
-                            <input type="radio" name="time_per_question" value={2}></input>
-                            2 min
-                        </label>
-                        <label>
-                            <input type="radio" name="time_per_question" value={3}></input>
-                            3 min
-                        </label>
-                    </fieldset>
+                {/* Privacy field */}
+                <fieldset id="private-game">
+                    <legend>Private Game?</legend>
+                    <label>
+                        <input
+                            type="radio"
+                            name="private_game"
+                            value="yes"
+                            defaultChecked
+                            onChange={() => handleConfigChange('isPrivateGame', true)}
+                        />
+                        Yes
+                    </label>
+                    <label>
+                        <input
+                            type="radio"
+                            name="private_game"
+                            value="no"
+                            onChange={() => handleConfigChange('isPrivateGame', false)}
+                        />
+                        No
+                    </label>
+                </fieldset>
 
-                    <button id="start-game-btn">Start Game</button>
-
-                </form>
-            </div>
-            
-        </>
-    )
+                <button id="start-game-btn">Start Game</button>
+            </form>
+        </div>
+    );
 }
