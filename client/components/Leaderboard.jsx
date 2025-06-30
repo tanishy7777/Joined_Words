@@ -1,40 +1,50 @@
 import React, { useEffect, useState } from 'react';
 
-export default function Leaderboard(props) {
-    const [leaderboard, setLeaderboard] = useState({});
+export default function Leaderboard({ socket, roomId, currentUserUid }) {
+  const [leaderboard, setLeaderboard] = useState({});
 
-    useEffect(() => {
-        props.socket.on('update_leaderboard', (players) => {
-            setLeaderboard(players);
-        });
+  useEffect(() => {
+    socket.on('update_leaderboard', (players) => {
+      setLeaderboard(players);
+    });
+    socket.emit('get_leaderboard', roomId);
 
-        props.socket.emit('get_leaderboard', props.roomId);
+    return () => {
+      socket.off('update_leaderboard');
+    };
+  }, [socket, roomId]);
 
-        // Cleanup socket listener on unmount
-        return () => {
-            props.socket.off('update_leaderboard');
-        };
-    }, [props.socket, props.roomId]);
+  // Convert leaderboard object to array and sort by score (optional)
+  const sortedPlayers = Object.entries(leaderboard)
+    .map(([uid, data]) => ({
+      uid,
+      nickname: data.nickname || 'Anonymous',
+      playerScore: data.playerScore || 0
+    }))
+    .sort((a, b) => b.playerScore - a.playerScore);
 
-    return (
-        <div>
-            <h1>Leaderboard</h1>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Socket ID</th>
-                        <th>Score</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {Object.keys(leaderboard).map((socketId) => (
-                        <tr key={socketId}>
-                            <td>{socketId}</td>
-                            <td>{leaderboard[socketId].playerScore}</td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </div>
-    );
+  return (
+    <div className="leaderboard">
+      <h3>Leaderboard</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Nickname</th>
+            <th>Score</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sortedPlayers.map((player) => (
+            <tr
+              key={player.uid}
+              className={player.uid === currentUserUid ? 'current-user' : ''}
+            >
+              <td>{player.nickname}</td>
+              <td>{player.playerScore}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }

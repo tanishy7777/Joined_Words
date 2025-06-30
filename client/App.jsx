@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Route, Routes, useNavigate, useParams } from 'react-router';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import Game from './components/Game';
@@ -125,39 +125,48 @@ function AppContent() {
     const { user } = useAuth();
     let navigate = useNavigate();
     const { roomCode } = useParams();
+    const [gameStarted, setGameStarted] = useState(false);
 
     useEffect(() => {
         if (!roomCode || !user) return;
 
-        const joinRoomWithRetry = () => {
+        const onConnect = () => {
         socket.emit('join_room', roomCode, (res) => {
             if (res.success) {
             setRoomId(roomCode);
-            socket.emit('get_room_info', roomCode, ({ isAdmin }) => {
+            socket.emit('get_room_info', roomCode, ({ isAdmin, gameStarted }) => {
                 setIsRoomAdmin(!!isAdmin);
+                if (gameStarted) {
+                setGameStarted(true);
+                }
             });
             navigate(`/room/${roomCode}`);
             } else {
-            console.error('Failed to join room:', res.reason);
+            alert('Failed to join room');
             }
         });
         };
 
         if (socket.connected) {
-        joinRoomWithRetry();
+        onConnect();
         } else {
-        socket.once('connect', joinRoomWithRetry);
+        socket.once('connect', onConnect);
         }
 
+        socket.on('load_game_component', () => {
+        setGameStarted(true);
+        });
+
         return () => {
-        socket.off('connect', joinRoomWithRetry);
+        socket.off('connect', onConnect);
+        socket.off('load_game_component');
         };
     }, [roomCode, user]);
 
     return (
         <>
         {roomId && !gameStarted && <WaitScreen isRoomAdmin={isRoomAdmin} roomId={roomId} socket={socket}/>}
-        {gameStarted && <Game roomId={roomId} socket={socket}/>}
+        {roomId && gameStarted && <Game roomId={roomId} socket={socket}/>}
         </>
     );
 }

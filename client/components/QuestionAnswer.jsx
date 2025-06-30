@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useRef } from "react";
-import { use } from "react";
 export default function QuestionAnswer(props){
         const [field, setField] = useState("");
         const [flipped1, setFlipped1] = useState(false);
@@ -21,30 +20,28 @@ export default function QuestionAnswer(props){
 
         const timerActiveRef = useRef(false);
 
-
+        function setClue1Result(clue1Answer){
+            if(clue1Answer && !timerActiveRef.current){
+                setFlipped1(true);
+                setField("");
+                setAnswer1(clue1Answer);
+                console.log("Clue 1 answer received:", clue1Answer, timerActiveRef.current); 
+            }else{
+                setField("");
+            }
+        }
+        function setClue2Result(clue2Answer){
+            if(clue2Answer && !timerActiveRef.current){
+                setFlipped2(true);
+                setField("");
+                setAnswer2(clue2Answer);
+                console.log("Clue 2 answer received:", clue2Answer); 
+            }else{
+                setField("");
+            }
+        }
         useEffect(() => {
-            function setClue1Result(clue1Answer){
-                if(clue1Answer && !timerActiveRef.current){
-                    setFlipped1(true);
-                    setField("");
-                    setAnswer1(clue1Answer);
-                    console.log("Clue 1 answer received:", clue1Answer, timerActiveRef.current); 
-                }else{
-                    setField("");
-                }
-            }
             props.socket.on("check_clue1_answer", setClue1Result);
-
-            function setClue2Result(clue2Answer){
-                if(clue2Answer && !timerActiveRef.current){
-                    setFlipped2(true);
-                    setField("");
-                    setAnswer2(clue2Answer);
-                    console.log("Clue 2 answer received:", clue2Answer); 
-                }else{
-                    setField("");
-                }
-            }
             props.socket.on("check_clue2_answer", setClue2Result);
 
             function newWord(){

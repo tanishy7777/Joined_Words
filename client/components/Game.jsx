@@ -2,11 +2,14 @@ import React, { useState, useEffect } from "react";
 import QuestionAnswer from "./QuestionAnswer";
 import { socket } from "../socket";
 import Leaderboard from "./Leaderboard";
+import { useAuth } from "../src/contexts/AuthContext";
 import RoomId from "./RoomId";
 
 export default function Game(props) {
     const [timer, setTimer] = useState(null);
     const [score, setScore] = useState(null);
+
+    const { user } = useAuth(); // ⬅️ ADD THIS
 
     useEffect(() => {
         function startTimer(countdownTime) {
@@ -58,7 +61,7 @@ export default function Game(props) {
 
             <QuestionAnswer socket={socket} roomId={props.roomId}/>
 
-            <Leaderboard socket={socket} />
+            <Leaderboard socket={socket} roomId={props.roomId} currentUserUid={user?.uid}  />
 
         </div>
     )
