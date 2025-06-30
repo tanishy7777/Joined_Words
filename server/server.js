@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { Server } from 'socket.io';
 import cors from 'cors';
-
+import { getFirestore } from 'firebase-admin/firestore';
 import { dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -15,12 +15,30 @@ const data = JSON.parse(readFileSync('./data.json', 'utf-8'));
 import { createClient } from 'redis';
 import { createAdapter } from '@socket.io/redis-adapter';
 
+
+// Redis setup
 const redisClient = createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' });
 const pubClient = redisClient.duplicate();
 const subClient = redisClient.duplicate();
 
 
 await Promise.all([redisClient.connect(), pubClient.connect(), subClient.connect()]);
+
+
+// Authentication and Firebase Admin SDK setup
+import admin from 'firebase-admin';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const serviceAccount = require('./jwmultiplayer-firebase-adminsdk-2952g-1bfce059ed.json');
+
+
+// Initialize Firebase Admin
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
+// User authentication mapping
+// let authenticatedUsers = new Map(); // socket.id -> firebaseUID mapping
 
 
 const app = express();
@@ -47,6 +65,16 @@ app.use(cors({
 app.get('/', (req, res) => {
     res.send('Hello World from Joined Words Server!');
 });
+
+io.use(async (socket, next) => {
+  const { uid, nickname } = socket.handshake.auth;
+  if (!uid || !nickname) {
+    return next(new Error('Authentication required'));
+  }
+  socket.data.user = { uid, nickname };          // ⬅️ CHANGED: assign without verify
+  next();
+});
+
 
 // Game State Management with Redis
 class GameStateManager {
@@ -108,8 +136,39 @@ setInterval(async () => {
 
 io.on('connection',  (socket) => {
   console.log('New client connected'); 
+
+    // Set up the socket data with user info
+    socket.on('get_room_info', async (roomId, callback) => {
+        const gameState = await GameStateManager.getRoom(roomId);
+        // ⬅️ use socket.data.user
+        const { uid, nickname } = socket.data.user;              // ⬅️ CHANGED
+        if (!gameState || !uid) {
+          return callback({ error: true });
+        }
+        const isAdmin = gameState.admin === uid;                  // ⬅️ CHANGED
+        callback({ isAdmin });
+    });
+
+
+    // // Authenticate user
+    // socket.on('authenticate', async (authData) => {
+    //     try {
+    //         const { uid, nickname } = authData;
+    //         authenticatedUsers.set(socket.id, { uid, nickname });
+    //         socket.emit('authenticated', { success: true });
+    //         console.log(`User authenticated: ${nickname} (${uid})`);
+    //     } catch (error) {
+    //         console.error('Authentication failed:', error);
+    //         socket.emit('authentication_error', 'Authentication failed');
+    //     }
+    // });
   
     socket.on('create_room', async (callback) => {
+        const { uid, nickname } = socket.data.user;              // ⬅️ CHANGED
+        if (!uid) {
+          return callback({ success: false, reason: 'NOT_AUTHENTICATED' });
+        }
+
         let roomId;
         do {
             roomId = Math.random().toString(36).substring(2, 10);
@@ -118,38 +177,47 @@ io.on('connection',  (socket) => {
         const initialState = {
             questionIndex: 0,
             timer: null,
-            score: {},  // this score is displayed on the screen
+            score: {},
             data: data,
             players: {},
-            admin: socket.id,
+            admin: uid,
             totalWords: null,
             cluesAnswered: {},
             isPrivateGame: true,
             numOfWords: 3,
             timePerQuestion: 1,
+            socketMap: {},
         };
 
-        initialState.players[socket.id] = { playerScore: 0 };
-        initialState.score[socket.id] = 100;
-        initialState.cluesAnswered[socket.id] = [false, false];
-        
+        initialState.players[uid] = {
+            playerScore: 0,
+            nickname: nickname,
+            socketId: socket.id
+        };
+        initialState.score[uid] = 100;
+        initialState.cluesAnswered[uid] = [false, false];
+        initialState.socketMap[uid] = socket.id;
+
         if (!initialState.isPrivateGame) {
             await redisClient.sAdd('public_rooms', roomId);
         }
 
         await GameStateManager.createRoom(roomId, initialState);
         socket.join(roomId);
-        console.log('room created:', roomId);
         io.to(roomId).emit('update_leaderboard', initialState.players);
-        callback(roomId);
+        callback({ success: true, roomId });
     });
 
+    // FIXED: Join random room handler
     socket.on('join_random_room', async (callback) => {
-      // Get public rooms from Redis Set
+        const { uid, nickname } = socket.data.user;                // ⬅️ CHANGED
+        if (!uid) {
+          return callback({ success: false, reason: 'NOT_AUTHENTICATED' });
+        }
+
         const publicRoomIds = await redisClient.sMembers('public_rooms');
-        
-        // Filter available rooms
         const availableRooms = [];
+        
         for (const roomId of publicRoomIds) {
             const state = await GameStateManager.getRoom(roomId);
             if (state && !state.isPrivateGame && state.totalWords === null) {
@@ -165,10 +233,15 @@ io.on('connection',  (socket) => {
         const randomRoom = availableRooms[Math.floor(Math.random() * availableRooms.length)];
         const currentState = await GameStateManager.getRoom(randomRoom);
 
-        // Initialize player state
-        currentState.players[socket.id] = { playerScore: 0 };
-        currentState.score[socket.id] = 100;
-        currentState.cluesAnswered[socket.id] = [false, false];
+        // FIXED: Use Firebase UID instead of socket.id
+        currentState.players[uid] = {
+            playerScore: 0,
+            nickname: nickname,
+            socketId: socket.id
+        };
+        currentState.score[uid] = 100;
+        currentState.cluesAnswered[uid] = [false, false];
+        currentState.socketMap[uid] = socket.id;
 
         await GameStateManager.updateRoom(randomRoom, currentState);
         socket.join(randomRoom);
@@ -177,8 +250,13 @@ io.on('connection',  (socket) => {
     });
 
 
+
     socket.on('join_room', async (roomId, callback) => {
-        // const currentState = gameStates[roomId];  
+        const { uid, nickname } = socket.data.user;             // ⬅️ CHANGED
+        if (!uid) {
+          return callback({ success: false, reason: 'NOT_AUTHENTICATED' });
+        }
+
         const currentState = await GameStateManager.getRoom(roomId);      
         if (!currentState) {
             console.log('Room not found:', roomId);
@@ -189,23 +267,24 @@ io.on('connection',  (socket) => {
         }
         
         // 1. Initialize player state
-        currentState.players[socket.id] = { playerScore: 0 };
-        currentState.score[socket.id] = 100;
-        currentState.cluesAnswered[socket.id] = [false, false];
+        // Initialize player with Firebase UID
+        currentState.players[uid] = { 
+          playerScore: 0, 
+          nickname: nickname,
+          socketId: socket.id 
+        };
+        currentState.score[uid] = 100;
+        currentState.cluesAnswered[uid] = [false, false];
+        currentState.socketMap[uid] = socket.id;
 
         // 2. Update Redis
         await GameStateManager.updateRoom(roomId, currentState);
-
         socket.join(roomId);
         console.log('Room joined:', roomId, 'Socket ID:', socket.id);
         
         // 3. Update all clients
         io.to(roomId).emit('update_leaderboard', currentState.players);
-        
-        // 4. Send success response
-        if (typeof callback === 'function') {
-            callback({ success: true });
-        }
+        callback?.({ success: true });
     });
     
 
@@ -241,126 +320,242 @@ io.on('connection',  (socket) => {
 
 
 
-    socket.on('start_game', async (roomId, isLoop)  => {
+    socket.on('start_game', async (roomId, isLoop) => {
+        const gameState = await GameStateManager.getRoom(roomId);
+        if (!gameState) return;
 
-      const gameState = await GameStateManager.getRoom(roomId);
-      if (!gameState) return;
+        const { uid } = socket.data.user;
+        if (!uid) return;
 
-      // Destructure ALL config values with defaults
-      let { 
-          numOfWords = 3,
-          timePerQuestion = 1,
-          isPrivateGame = false
-      } = gameState;
+        let { numOfWords = 3, timePerQuestion = 1, isPrivateGame = false } = gameState;
 
-      console.log(`Starting game with config:`, {
-          numOfWords,
-          timePerQuestion,
-          isPrivateGame
-      });
+        if (!isLoop) {
+            io.to(roomId).emit('load_game_component');
+            gameState.totalWords = numOfWords;
+            await GameStateManager.updateRoom(roomId, gameState);
+        }
 
-      // Your existing game start logic using these values...
-      if(!isLoop) {
-          io.to(roomId).emit('load_game_component');
-          gameState.totalWords = numOfWords;
-          await GameStateManager.updateRoom(roomId, gameState);
-      }
+        const questionData = {
+            questionIndex: gameState.totalWords - numOfWords,
+            clue1: gameState.data[gameState.totalWords - numOfWords].clue1,
+            clue2: gameState.data[gameState.totalWords - numOfWords].clue2,
+            jwclue: gameState.data[gameState.totalWords - numOfWords].jwclue,
+        };
 
-      console.log(`Game started in room: ${roomId}`);
-      console.log('Number of words:', numOfWords, 'Time per question:', timePerQuestion, 'Is Private Game:', isPrivateGame, 'Is Loop:', isLoop);
-      const questionData = {
-        questionIndex: gameState.totalWords - numOfWords,
-        clue1: gameState.data[gameState.totalWords - numOfWords].clue1,
-        clue2: gameState.data[gameState.totalWords - numOfWords].clue2,
-        jwclue: gameState.data[gameState.totalWords - numOfWords].jwclue,
-      };
+        gameState.questionIndex = gameState.totalWords - numOfWords;
+        numOfWords--;
+        let totalTime = 16;
+        let countdownTime = totalTime;
+        let timePenalty = 10;
 
-      gameState.questionIndex = gameState.totalWords - numOfWords;
-      numOfWords--; 
-      // let totalTime = timePerQuestion*60;
-      let totalTime = 16;
-      let countdownTime = totalTime; 
-      let gameInterval;
-      let timePenalty = 10;
-      
-      
-      console.log(roomId);
-      console.log(socket.id);
-      console.log(socket.rooms); // It should list all the rooms the socket is connected to
-      
-      // io.to(roomId).emit('get_question_data', questionData);
-      // Added this delay to ensure that the client has loaded the game component
-      setTimeout(() => {
-        io.to(roomId).emit('get_question_data', questionData);
-        io.to(roomId).emit('get_score', gameState.score[socket.id]); // Added this from join_room and reset after each loop
-      }, 10);  
-      
-      io.to(roomId).emit('game_started', countdownTime);
+        setTimeout(() => {
+            io.to(roomId).emit('get_question_data', questionData);
+            // FIXED: Use Firebase UID
+            io.to(roomId).emit('get_score', gameState.score[uid]);
+        }, 10);
 
-      gameInterval = setInterval(async () => {
-          countdownTime--;
-          io.to(roomId).emit('update_timer', countdownTime);
+        io.to(roomId).emit('game_started', countdownTime);
 
-          if ((totalTime - countdownTime) % 5 === 0) {
-              for (const playerId of Object.keys(gameState.players)) {
-                  if (!(JSON.stringify(gameState.cluesAnswered[playerId]) === JSON.stringify([true, true]))) {
-                      gameState.score[playerId] -= timePenalty;
-                      io.to(playerId).emit('score_update', gameState.score[playerId]);
-                  }
-              }
-              await GameStateManager.updateRoom(roomId, gameState);
-          }
+        const gameInterval = setInterval(async () => {
+            countdownTime--;
+            io.to(roomId).emit('update_timer', countdownTime);
 
-          if (countdownTime <= 0) {
-              clearInterval(gameInterval);
-              for (const playerId of Object.keys(gameState.players)) {
-                  gameState.players[playerId].playerScore += gameState.score[playerId];
-              }
-              await GameStateManager.updateRoom(roomId, gameState);
-              io.to(roomId).emit('update_leaderboard', gameState.players);
+            if ((totalTime - countdownTime) % 5 === 0) {
+                for (const playerId of Object.keys(gameState.players)) {
+                    if (!(JSON.stringify(gameState.cluesAnswered[playerId]) === JSON.stringify([true, true]))) {
+                        gameState.score[playerId] -= timePenalty;
+                        // FIXED: Use socketMap to get correct socket ID
+                        const playerSocketId = gameState.socketMap[playerId];
+                        if (playerSocketId) {
+                            io.to(playerSocketId).emit('score_update', gameState.score[playerId]);
+                        }
+                    }
+                }
+                await GameStateManager.updateRoom(roomId, gameState);
+            }
 
-              if (numOfWords > 0) {
-                  for (const playerId of Object.keys(gameState.players)) {
-                      gameState.score[playerId] = 100;
-                      io.to(playerId).emit('clear_field_new_word');
-                  }
-                  await GameStateManager.updateRoom(roomId, gameState);
-                  io.to(gameState.admin).emit("game_restart", {roomId, numOfWords, timePerQuestion});
-                  socket.broadcast.to(roomId).emit("next_word_in");
-              } else {
-                  io.to(roomId).emit('end_game');
-              }
-          }
-      }, 1000);
+            if (countdownTime <= 0) {
+                clearInterval(gameInterval);
+                for (const playerId of Object.keys(gameState.players)) {
+                    gameState.players[playerId].playerScore += gameState.score[playerId];
+                }
+                await GameStateManager.updateRoom(roomId, gameState);
+                io.to(roomId).emit('update_leaderboard', gameState.players);
+
+                if (numOfWords > 0) {
+                    for (const playerId of Object.keys(gameState.players)) {
+                        gameState.score[playerId] = 100;
+                        const playerSocketId = gameState.socketMap[playerId];
+                        if (playerSocketId) {
+                            io.to(playerSocketId).emit('clear_field_new_word');
+                        }
+                    }
+                    await GameStateManager.updateRoom(roomId, gameState);
+                    const adminSocketId = gameState.socketMap[gameState.admin];
+                    if (adminSocketId) {
+                        io.to(adminSocketId).emit("game_restart", { roomId, numOfWords, timePerQuestion });
+                    }
+                    socket.broadcast.to(roomId).emit("next_word_in");
+                } else {
+                    io.to(roomId).emit('end_game');
+                }
+            }
+        }, 1000);
     });
     
 
-    socket.on('check_clue_answer', async ({questionIndex, field, roomId}) => {
-      console.log('Checking clue answer', questionIndex, field);
-      const gameState = await GameStateManager.getRoom(roomId);
-      if(roomId){
-        if(field.toLowerCase() === gameState.data[questionIndex].answer1.toLowerCase()){
-          socket.emit('check_clue1_answer', field.toLowerCase());
-          gameState.cluesAnswered[socket.id][0] = true;
-        }else if(field.toLowerCase() === gameState.data[questionIndex].answer2.toLowerCase()){
-          socket.emit('check_clue2_answer', field.toLowerCase());
-          gameState.cluesAnswered[socket.id][1] = true;
-        }else if(field.toLowerCase() === gameState.data[questionIndex].answer1.toLowerCase() + gameState.data[questionIndex].answer2.toLowerCase()){
-          socket.emit('check_clue1_answer', gameState.data[questionIndex].answer1.toLowerCase());
-          socket.emit('check_clue2_answer', gameState.data[questionIndex].answer2.toLowerCase());
-          gameState.cluesAnswered[socket.id][0] = true;
-          gameState.cluesAnswered[socket.id][1] = true;
+    socket.on('check_clue_answer', async ({ questionIndex, field, roomId }) => {
+        const gameState = await GameStateManager.getRoom(roomId);
+        const { uid } = socket.data.user;  
+        if (!gameState || !uid) return;
+
+        if (field.toLowerCase() === gameState.data[questionIndex].answer1.toLowerCase()) {
+            socket.emit('check_clue1_answer', field.toLowerCase());
+            gameState.cluesAnswered[uid][0] = true;
+        } else if (field.toLowerCase() === gameState.data[questionIndex].answer2.toLowerCase()) {
+            socket.emit('check_clue2_answer', field.toLowerCase());
+            gameState.cluesAnswered[uid][1] = true;
+        } else if (field.toLowerCase() === gameState.data[questionIndex].answer1.toLowerCase() + gameState.data[questionIndex].answer2.toLowerCase()) {
+            socket.emit('check_clue1_answer', gameState.data[questionIndex].answer1.toLowerCase());
+            socket.emit('check_clue2_answer', gameState.data[questionIndex].answer2.toLowerCase());
+            gameState.cluesAnswered[uid][0] = true;
+            gameState.cluesAnswered[uid][1] = true;
+        } else {
+            socket.emit('check_clue1_answer', null);
         }
-        else{
-          socket.emit('check_clue1_answer', null);
-        }
-      }
-      await GameStateManager.updateRoom(roomId, gameState);
-      
+        await GameStateManager.updateRoom(roomId, gameState);
     });
 
-    // TODO: Use react router to have shareable links for rooms
+
+    // Friend system handlers
+  socket.on('send_friend_request', async (data, callback) => {
+    const { uid, nickname } = socket.data.user; // ⬅️ Use socket.data.user for auth
+    if (!uid) { return callback({ success: false, reason: 'NOT_AUTHENTICATED' }); }
+    try {
+      const { targetUserUid } = data;
+      const requestId = `${uid}_${targetUserUid}_${Date.now()}`; // ⬅️ Use uid for request ID
+      await redisClient.setEx(`friend_request:${requestId}`, 3600, JSON.stringify({
+        id: requestId, senderUid: uid, senderNickname: nickname, targetUserUid, status: 'pending', createdAt: new Date()
+      }));
+      await redisClient.sAdd(`user_sent_requests:${uid}`, requestId);
+      await redisClient.sAdd(`user_received_requests:${targetUserUid}`, requestId);
+      let targetSocketId = null;
+      for (const [id, s] of io.sockets.sockets) { // ⬅️ Find target socket by UID
+        if (s.data.user?.uid === targetUserUid) { targetSocketId = id; break; }
+      }
+      if (targetSocketId) {
+        io.to(targetSocketId).emit('friend_request_received', { id: requestId, senderUid: uid, senderNickname: nickname });
+      }
+      callback({ success: true });
+    } catch (error) {
+      console.error('Error sending friend request:', error);
+      callback({ success: false, reason: 'SERVER_ERROR' });
+    }
+  });
+
+  socket.on('respond_friend_request', async (data, callback) => {
+    const { uid } = socket.data.user; // ⬅️ Use socket.data.user for auth
+    if (!uid) { return callback({ success: false, reason: 'NOT_AUTHENTICATED' }); }
+    try {
+      const { requestId, response } = data;
+      const requestData = await redisClient.get(`friend_request:${requestId}`);
+      if (!requestData) { callback({ success: false, reason: 'REQUEST_NOT_FOUND' }); return; }
+      const request = JSON.parse(requestData);
+      if (request.targetUserUid !== uid) { callback({ success: false, reason: 'UNAUTHORIZED' }); return; }
+      if (response === 'accepted') {
+        await redisClient.sAdd(`user_friends:${request.senderUid}`, uid);
+        await redisClient.sAdd(`user_friends:${uid}`, request.senderUid);
+      }
+      await redisClient.del(`friend_request:${requestId}`);
+      await redisClient.sRem(`user_sent_requests:${request.senderUid}`, requestId);
+      await redisClient.sRem(`user_received_requests:${uid}`, requestId);
+      callback({ success: true });
+    } catch (error) {
+      console.error('Error responding to friend request:', error);
+      callback({ success: false, reason: 'SERVER_ERROR' });
+    }
+  });
+
+  
+  const firestore = getFirestore();
+
+  socket.on('get_friends', async (callback) => {
+    const { uid } = socket.data.user;
+    if (!uid) return callback([]);
+
+    try {
+      const friendUids = await redisClient.sMembers(`user_friends:${uid}`);
+      const friends = [];
+      for (const friendUid of friendUids) {
+        // check if online
+        let isOnline = false;
+        let nickname = null;
+        for (const [id, s] of io.sockets.sockets) {
+          if (s.data.user?.uid === friendUid) {
+            isOnline = true;
+            nickname = s.data.user.nickname;               // online: use live nickname
+            break;
+          }
+        }
+        if (!isOnline) {
+          // offline: fetch from Firestore
+          const userDoc = await firestore.doc(`users/${friendUid}`).get();
+          nickname = userDoc.exists ? userDoc.data().nickname : 'Unknown';
+        }
+        friends.push({ uid: friendUid, nickname, isOnline });
+      }
+      callback(friends);
+    } catch (error) {
+      console.error('Error getting friends:', error);
+      callback([]);
+    }
+  });
+
+  socket.on('get_friend_requests', async (callback) => {
+    const { uid } = socket.data.user; // ⬅️ Use socket.data.user for auth
+    if (!uid) return;
+    try {
+      const requestIds = await redisClient.sMembers(`user_received_requests:${uid}`);
+      const requests = [];
+      for (const requestId of requestIds) {
+        const requestData = await redisClient.get(`friend_request:${requestId}`);
+        if (requestData) { requests.push(JSON.parse(requestData)); }
+      }
+      callback(requests);
+    } catch (error) {
+      console.error('Error getting friend requests:', error);
+      callback([]);
+    }
+  });
+
+  socket.on('invite_friend_to_game', async (data, callback) => {
+    const { uid, nickname } = socket.data.user; // ⬅️ Use socket.data.user for auth
+    if (!uid) { callback({ success: false, reason: 'NOT_AUTHENTICATED' }); return; }
+    try {
+      const { friendUid } = data;
+      const invitationId = `${uid}_${friendUid}_${Date.now()}`; // ⬅️ Use uid for invitation ID
+      let targetSocketId = null;
+      for (const [id, s] of io.sockets.sockets) { // ⬅️ Find target socket by UID
+        if (s.data.user?.uid === friendUid) { targetSocketId = id; break; }
+      }
+      if (targetSocketId) {
+        io.to(targetSocketId).emit('friend_invitation_received', { invitationId, senderUid: uid, senderNickname: nickname });
+        callback({ success: true });
+      } else {
+        callback({ success: false, reason: 'FRIEND_OFFLINE' });
+      }
+    } catch (error) {
+      console.error('Error inviting friend:', error);
+      callback({ success: false, reason: 'SERVER_ERROR' });
+    }
+  });
+
+  socket.on('disconnect', () => { console.log('Client disconnected'); }); // ⬅️ No need to delete from authenticatedUsers
 });
+
+    // TODO: Use react router to have shareable links for rooms
+
+
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`server running at http://localhost:${PORT}`);
