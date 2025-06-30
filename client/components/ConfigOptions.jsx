@@ -1,3 +1,4 @@
+import React from 'react';
 export default function ConfigOptions(props) {
     const handleConfigChange = (setting, value) => {
         props.socket.emit('update_config', props.roomId, {

@@ -177,6 +177,22 @@ export default function FriendSystem({ isOpen, onClose, currentRoomId }) {
     };
   }, []);
 
+  useEffect(() => {
+    const onFocus = () => loadFriends();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, []);
+
+  useEffect(() => {
+  // When the server notifies us, reload friends
+    socket.on('friends_status_update', loadFriends);
+    return () => {
+      socket.off('friends_status_update', loadFriends);
+    };
+  }, []);
+
+
+
   if (!isOpen) return null;
 
   return (

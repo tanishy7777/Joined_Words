@@ -1,17 +1,14 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+// vite.config.js
+import { defineConfig } from 'vite';
 
-// https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
   server: {
-    proxy: 'http://35.207.196.68:3000',
-    port: 5173,
-    host: true, 
+    host: '0.0.0.0',                 // listen on all network interfaces
+    port: 5173,                      // your dev port
     hmr: {
-      host: 'localhost', 
-      port: 5173, 
-    },
-  },
-
-})
+      host: '192.168.189.175',       // replace with your machine’s LAN IP
+      protocol: 'ws',
+      port: 5173
+    }
+  }
+});

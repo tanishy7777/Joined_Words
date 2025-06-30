@@ -6,6 +6,8 @@ import WaitScreen from './components/WaitScreen';
 import NicknamePrompt from './components/NicknamePrompt';
 import { socket, updateSocketAuth } from './socket'; // Import update function
 import FriendSystem from './components/FriendSystem';
+import Leaderboard from './components/Leaderboard';
+import ChatWindow from './components/ChatWindow';
 
 function AppContent() {
   const { user, loading, showNicknamePrompt } = useAuth();
@@ -13,8 +15,22 @@ function AppContent() {
   const [isRoomAdmin, setIsRoomAdmin] = React.useState(false);
   const [gameStarted, setGameStarted] = React.useState(false);
   const [friendsOpen, setFriendsOpen] = React.useState(false);
-  // Handle socket authentication when user changes
+  const [leaderboardData, setLeaderboardData] = useState({});
 
+  // Handle socket authentication when user changes
+  
+
+  // track leaderboard updates
+  useEffect(() => {
+     const handleUpdate = (players) => {
+       setLeaderboardData(players);
+     };
+     socket.on('update_leaderboard', handleUpdate);
+     if (roomId) socket.emit('get_leaderboard', roomId);
+     return () => {
+       socket.off('update_leaderboard', handleUpdate);
+     };
+   }, [roomId]);
 
   useEffect(() => {
     
@@ -50,7 +66,6 @@ function AppContent() {
         }
     });
 };
-
   
   const joinRandomRoom = (navigate) => {
     if (!user) return;
@@ -84,10 +99,6 @@ function AppContent() {
       }
     });
   };
-
-  
-
- 
 
   function HandleRoom() {
     let navigate = useNavigate();
@@ -165,13 +176,43 @@ function AppContent() {
 
     return (
         <>
-        {roomId && !gameStarted && <WaitScreen isRoomAdmin={isRoomAdmin} roomId={roomId} socket={socket}/>}
+        {roomId && !gameStarted && 
+        <WaitScreen 
+              isRoomAdmin={isRoomAdmin} 
+              roomId={roomId} 
+              socket={socket}
+              players={leaderboardData}
+          />}
         {roomId && gameStarted && <Game roomId={roomId} socket={socket}/>}
         </>
     );
 }
 
-  
+  // In your React components
+  useEffect(() => {
+      socket.on('player_disconnected', (data) => {
+          console.log(`${data.nickname} left the game`);
+          // You could show a toast notification here
+      });
+      
+      socket.on('became_admin', (data) => {
+          setIsRoomAdmin(true);
+          console.log("You are now the admin!");
+          // Optionally show a toast or UI update here
+      });
+
+      socket.on('admin_changed', (data) => {
+          console.log(`${data.nickname} is now the admin`);
+          // Optionally update UI for all players
+      });
+      
+      return () => {
+          socket.off('player_disconnected');
+          socket.off('became_admin');
+          socket.off('admin_changed');
+      };
+  }, [socket]);
+
 
   useEffect(() => {
     socket.on('load_game_component', () => {
@@ -189,18 +230,39 @@ function AppContent() {
 
   return (
     <Router>
+      {/* Header */}
       <header className="app-header">
         <button onClick={() => setFriendsOpen(true)}>Friends</button>
       </header>
 
       <FriendSystem isOpen={friendsOpen} onClose={() => setFriendsOpen(false)} />
 
-      <Routes>
-        <Route path="/" element={<HandleRoom />} />
-        <Route path="/room/:roomCode" element={<RoomHandler />} />
-      </Routes>
+      <div className="main-content">
+        <Routes>
+          <Route path="/" element={<HandleRoom />} />
+          <Route path="/room/:roomCode" element={
+            <>
+              {!gameStarted
+                ? <WaitScreen
+                    isRoomAdmin={isRoomAdmin}
+                    roomId={roomId}
+                    socket={socket}
+                    players={leaderboardData}  // leaderboard lifted to AppContent
+                  />
+                : <Game
+                    roomId={roomId}
+                    socket={socket}
+                  />
+              }
+              {/* Chat appears on all room screens */}
+              <ChatWindow roomId={roomId} className={gameStarted ? 'game-chat' : 'wait-chat'} />
+            </>
+          }/>
+        </Routes>
+      </div>
     </Router>
   );
+
 }
 
 export default function App() {

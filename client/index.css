@@ -430,7 +430,7 @@ body {
 }
 
 
-/* Enhanced status indicators */
+/* Friends Menu*/
 .status-dot {
   display: inline-block;
   width: 8px;
@@ -486,6 +486,8 @@ body {
   cursor: not-allowed;
 }
 
+/* Leaderboard styles */
+
 .leaderboard {
   margin: 1rem 0;
 }
@@ -503,3 +505,66 @@ body {
   font-weight: bold;
 }
 
+
+/* Chat window */
+/* .chat-window         { display:flex; flex-direction:column; height:100%; border:1px solid #ddd; }
+.chat-log            { flex:1; overflow-y:auto; padding:8px }
+/* .chat-input input    { width:100%; padding:8px; border:0; border-top:1px solid #ddd } */
+ .bubble              { margin:4px 0; max-width:80%; padding:6px 10px; border-radius:6px; font-size:14px } */
+.bubble .nick        { display:block; font-size:11px; color:#555 }
+.bubble.me           { align-self:flex-end; background:#007bff; color:#fff }
+.bubble.them         { align-self:flex-start; background:#eee }
+.bubble.system       { align-self:center; background:#f0f0f0; color:#888; font-style:italic }
+
+.player-list        { margin:12px 0; border:1px solid #ccc; max-height:150px; overflow:auto }
+.player-row         { display:flex; justify-content:space-between; padding:4px 8px }
+.player-row button  { background:none; border:0; cursor:pointer } */
+
+
+/* Container that holds both game and chat */
+.main-content {
+  display: flex;
+  gap: 20px;
+  height: calc(100vh - 50px); /* account for header */
+  padding: 10px;
+}
+
+/* Chat window tweaks */
+.chat-window {
+  width: 300px;          /* fixed width */
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.chat-window.wait-chat {
+  /* if on waiting screen, height smaller */
+  height: 250px;
+}
+
+.chat-window.game-chat {
+  /* in-game, full height */
+  height: 100%;
+}
+
+.chat-log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  background: #f9f9f9;
+}
+
+.chat-input {
+  border-top: 1px solid #ddd;
+}
+
+.chat-input input {
+  width: 100%;
+  padding: 8px;
+  border: none;
+  outline: none;
+  font-size: 14px;
+}

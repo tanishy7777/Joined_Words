@@ -21,9 +21,7 @@ const redisClient = createClient({ url: process.env.REDIS_URL || 'redis://localh
 const pubClient = redisClient.duplicate();
 const subClient = redisClient.duplicate();
 
-
 await Promise.all([redisClient.connect(), pubClient.connect(), subClient.connect()]);
-
 
 // Authentication and Firebase Admin SDK setup
 import admin from 'firebase-admin';
@@ -36,10 +34,6 @@ const serviceAccount = require('./jwmultiplayer-firebase-adminsdk-2952g-1bfce059
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
 });
-
-// User authentication mapping
-// let authenticatedUsers = new Map(); // socket.id -> firebaseUID mapping
-
 
 const app = express();
 const server = createServer(app);
@@ -115,7 +109,7 @@ class GameStateManager {
 
     static async deleteRoom(roomId) {
         try {
-          console.log(`Deleting room: ${roomId}`);
+          console.log(`Deleting room from Redis: ${roomId}`);
           await redisClient.del(`gamestate:${roomId}`);
         } catch (error) {
           console.error('Redis delete failed:', error);
@@ -134,8 +128,23 @@ setInterval(async () => {
     }
 }, 10 * 60 * 1000); // Every 10 minutes
 
+
+// Helper: Notify all friends of a user's status change
+async function notifyFriendsStatusUpdate(uid) {
+  const friendUids = await redisClient.sMembers(`user_friends:${uid}`);
+  for (const friendUid of friendUids) {
+    // Find if the friend is online
+    for (const [id, s] of io.sockets.sockets) {
+      if (s.data.user?.uid === friendUid) {
+        io.to(id).emit('friends_status_update');
+      }
+    }
+  }
+}
+
+
 io.on('connection',  (socket) => {
-  console.log('New client connected'); 
+  console.log('New client connected');     
 
     // Set up the socket data with user info
     socket.on('get_room_info', async (roomId, callback) => {
@@ -148,27 +157,14 @@ io.on('connection',  (socket) => {
       const gameStarted = gameState.totalWords !== null;
       callback({ isAdmin, gameStarted });
     });
-
-
-
-    // // Authenticate user
-    // socket.on('authenticate', async (authData) => {
-    //     try {
-    //         const { uid, nickname } = authData;
-    //         authenticatedUsers.set(socket.id, { uid, nickname });
-    //         socket.emit('authenticated', { success: true });
-    //         console.log(`User authenticated: ${nickname} (${uid})`);
-    //     } catch (error) {
-    //         console.error('Authentication failed:', error);
-    //         socket.emit('authentication_error', 'Authentication failed');
-    //     }
-    // });
   
     socket.on('create_room', async (callback) => {
         const { uid, nickname } = socket.data.user;              // ⬅️ CHANGED
         if (!uid) {
           return callback({ success: false, reason: 'NOT_AUTHENTICATED' });
         }
+
+        await notifyFriendsStatusUpdate(uid);
 
         let roomId;
         do {
@@ -216,6 +212,8 @@ io.on('connection',  (socket) => {
           return callback({ success: false, reason: 'NOT_AUTHENTICATED' });
         }
 
+        await notifyFriendsStatusUpdate(uid);
+
         const publicRoomIds = await redisClient.sMembers('public_rooms');
         const availableRooms = [];
         
@@ -250,22 +248,22 @@ io.on('connection',  (socket) => {
         callback({ success: true, roomId: randomRoom });
     });
 
-
-
+    
     socket.on('join_room', async (roomId, callback) => {
-        const { uid, nickname } = socket.data.user;             // ⬅️ CHANGED
-        if (!uid) {
-          return callback({ success: false, reason: 'NOT_AUTHENTICATED' });
-        }
-
-        const currentState = await GameStateManager.getRoom(roomId);      
-        if (!currentState) {
-            console.log('Room not found:', roomId);
-            if (typeof callback === 'function') {
-                callback({ success: false, reason: 'ROOM_NOT_FOUND' });
-            }
-            return;
-        }
+      const { uid, nickname } = socket.data.user;             // ⬅️ CHANGED
+      if (!uid) {
+        return callback({ success: false, reason: 'NOT_AUTHENTICATED' });
+      }
+      await notifyFriendsStatusUpdate(uid);
+      
+      const currentState = await GameStateManager.getRoom(roomId);      
+      if (!currentState) {
+          console.log('Room not found:', roomId);
+          if (typeof callback === 'function') {
+              callback({ success: false, reason: 'ROOM_NOT_FOUND' });
+          }
+          return;
+      }
         
         // 1. Initialize player state
         // Initialize player with Firebase UID
@@ -346,6 +344,7 @@ io.on('connection',  (socket) => {
 
         gameState.questionIndex = gameState.totalWords - numOfWords;
         numOfWords--;
+        gameState.numOfWords = numOfWords;
         let totalTime = 16;
         let countdownTime = totalTime;
         let timePenalty = 10;
@@ -377,59 +376,79 @@ io.on('connection',  (socket) => {
             }
 
             if (countdownTime <= 0) {
-                clearInterval(gameInterval);
+              clearInterval(gameInterval);
+
+              // Only add score if answered correctly
+              for (const playerId of Object.keys(gameState.players)) {
+                if (gameState.players[playerId].answeredCorrectly) {
+                  gameState.players[playerId].playerScore += gameState.score[playerId];
+                }
+                gameState.players[playerId].answeredCorrectly = false;
+              }
+
+              await GameStateManager.updateRoom(roomId, gameState);
+              io.to(roomId).emit('update_leaderboard', gameState.players);
+
+              if (numOfWords > 0) {
+                // Reset scores for next word
                 for (const playerId of Object.keys(gameState.players)) {
-                    gameState.players[playerId].playerScore += gameState.score[playerId];
+                  gameState.score[playerId] = 100;
+                  const playerSocketId = gameState.socketMap[playerId];
+                  if (playerSocketId) {
+                    io.to(playerSocketId).emit('clear_field_new_word');
+                  }
                 }
                 await GameStateManager.updateRoom(roomId, gameState);
-                io.to(roomId).emit('update_leaderboard', gameState.players);
-
-                if (numOfWords > 0) {
-                    for (const playerId of Object.keys(gameState.players)) {
-                        gameState.score[playerId] = 100;
-                        const playerSocketId = gameState.socketMap[playerId];
-                        if (playerSocketId) {
-                            io.to(playerSocketId).emit('clear_field_new_word');
-                        }
-                    }
-                    await GameStateManager.updateRoom(roomId, gameState);
-                    const adminSocketId = gameState.socketMap[gameState.admin];
-                    if (adminSocketId) {
-                        io.to(adminSocketId).emit("game_restart", { roomId, numOfWords, timePerQuestion });
-                    }
-                    socket.broadcast.to(roomId).emit("next_word_in");
-                } else {
-                    io.to(roomId).emit('end_game');
+                const adminSocketId = gameState.socketMap[gameState.admin];
+                if (adminSocketId) {
+                  io.to(adminSocketId).emit("game_restart", { roomId, numOfWords, timePerQuestion });
                 }
+                socket.broadcast.to(roomId).emit("next_word_in");
+              } else {
+                io.to(roomId).emit('end_game');
+              }
             }
+
         }, 1000);
     });
     
 
     socket.on('check_clue_answer', async ({ questionIndex, field, roomId }) => {
-        const gameState = await GameStateManager.getRoom(roomId);
-        const { uid } = socket.data.user;  
-        if (!gameState || !uid) return;
+      const gameState = await GameStateManager.getRoom(roomId);
+      const { uid } = socket.data.user;
+      if (!gameState || !uid) return;
 
-        if (field.toLowerCase() === gameState.data[questionIndex].answer1.toLowerCase()) {
-            socket.emit('check_clue1_answer', field.toLowerCase());
-            gameState.cluesAnswered[uid][0] = true;
-        } else if (field.toLowerCase() === gameState.data[questionIndex].answer2.toLowerCase()) {
-            socket.emit('check_clue2_answer', field.toLowerCase());
-            gameState.cluesAnswered[uid][1] = true;
-        } else if (field.toLowerCase() === gameState.data[questionIndex].answer1.toLowerCase() + gameState.data[questionIndex].answer2.toLowerCase()) {
-            socket.emit('check_clue1_answer', gameState.data[questionIndex].answer1.toLowerCase());
-            socket.emit('check_clue2_answer', gameState.data[questionIndex].answer2.toLowerCase());
-            gameState.cluesAnswered[uid][0] = true;
-            gameState.cluesAnswered[uid][1] = true;
-        } else {
-            socket.emit('check_clue1_answer', null);
-        }
-        await GameStateManager.updateRoom(roomId, gameState);
+      // Assume a question is "correct" if both clues are answered
+      if (field.toLowerCase() === gameState.data[questionIndex].answer1.toLowerCase()) {
+        socket.emit('check_clue1_answer', field.toLowerCase());
+        gameState.cluesAnswered[uid][0] = true;
+        console.log(`Player ${uid} answered clue1 correctly for question index ${questionIndex}`);
+      } else if (field.toLowerCase() === gameState.data[questionIndex].answer2.toLowerCase()) {
+        socket.emit('check_clue2_answer', field.toLowerCase());
+        gameState.cluesAnswered[uid][1] = true;
+        console.log(`Player ${uid} answered clue2 correctly for question index ${questionIndex}`);
+      } else if (field.toLowerCase() === gameState.data[questionIndex].answer1.toLowerCase() + gameState.data[questionIndex].answer2.toLowerCase()) {
+        socket.emit('check_clue1_answer', gameState.data[questionIndex].answer1.toLowerCase());
+        socket.emit('check_clue2_answer', gameState.data[questionIndex].answer2.toLowerCase());
+        gameState.cluesAnswered[uid][0] = true;
+        gameState.cluesAnswered[uid][1] = true;
+      } else {
+        socket.emit('check_clue1_answer', null);
+      }
+
+      // ⬇️ ADD THIS: Set answeredCorrectly flag if both clues are answered
+      if (gameState.cluesAnswered[uid][0] && gameState.cluesAnswered[uid][1]) {
+        gameState.players[uid].answeredCorrectly = true;
+        gameState.players[uid].playerScore += gameState.score[uid];
+        io.to(roomId).emit('update_leaderboard', gameState.players);
+        console.log(`Player ${uid} answered correctly for question index ${questionIndex}`);
+      }
+
+      await GameStateManager.updateRoom(roomId, gameState);
     });
 
 
-    // Friend system handlers
+   // Friend system handlers
   socket.on('send_friend_request', async (data, callback) => {
     const { uid, nickname } = socket.data.user; // ⬅️ Use socket.data.user for auth
     if (!uid) { return callback({ success: false, reason: 'NOT_AUTHENTICATED' }); }
@@ -480,7 +499,6 @@ io.on('connection',  (socket) => {
 
   
   const firestore = getFirestore();
-
   // Enhanced get_friends handler with game status
   socket.on('get_friends', async (callback) => {
     const { uid } = socket.data.user;
@@ -537,7 +555,6 @@ io.on('connection',  (socket) => {
     }
   });
 
-
   socket.on('get_friend_requests', async (callback) => {
     const { uid } = socket.data.user; // ⬅️ Use socket.data.user for auth
     if (!uid) return;
@@ -556,7 +573,7 @@ io.on('connection',  (socket) => {
   });
 
   // Add to server.js - Enhanced invite system
-socket.on('invite_friend_to_game', async (data, callback) => {
+  socket.on('invite_friend_to_game', async (data, callback) => {
   const { uid, nickname } = socket.data.user;
   if (!uid) { 
     callback({ success: false, reason: 'NOT_AUTHENTICATED' }); 
@@ -700,6 +717,7 @@ socket.on('accept_game_invitation', async (data, callback) => {
 
 // Helper function to clean up player from room
 async function cleanupPlayerFromRoom(socket, roomId, uid) {
+  await notifyFriendsStatusUpdate(uid);
   const gameState = await GameStateManager.getRoom(roomId);
   if (gameState && gameState.players[uid]) {
     delete gameState.players[uid];
@@ -716,14 +734,153 @@ async function cleanupPlayerFromRoom(socket, roomId, uid) {
   }
 }
 
+  // Helper function to handle player disconnect cleanup
+async function cleanupPlayerDisconnect(socket, roomId, uid, nickname) {
+  try {
+      await notifyFriendsStatusUpdate(uid);
+      const gameState = await GameStateManager.getRoom(roomId);
+      if (!gameState) {
+          console.log(`Room ${roomId} not found during cleanup`);
+          return;
+      }
 
-  socket.on('disconnect', () => { console.log('Client disconnected'); }); // ⬅️ No need to delete from authenticatedUsers
+      // Remove player from game state
+      if (gameState.players[uid]) {
+          delete gameState.players[uid];
+          delete gameState.score[uid];
+          delete gameState.cluesAnswered[uid];
+          delete gameState.socketMap[uid];
+      }
+
+      // Check if room is now empty
+      const remainingPlayers = Object.keys(gameState.players);
+      console.log(`Remaining players in room ${roomId}:`, remainingPlayers.length);
+      if (remainingPlayers.length === 0) {
+          // No players left - delete the room entirely
+          console.log(`Deleting empty room: ${roomId}`);
+          
+          // Clean up Redis data
+          await GameStateManager.deleteRoom(roomId);
+          await redisClient.sRem('public_rooms', roomId);
+          
+          // Clean up any pending invitations for this room
+          const invitationKeys = await redisClient.keys(`game_invitation:*`);
+          for (const key of invitationKeys) {
+              const invitationData = await redisClient.get(key);
+              if (invitationData) {
+                  const invitation = JSON.parse(invitationData);
+                  if (invitation.roomId === roomId) {
+                      await redisClient.del(key);
+                  }
+              }
+          }
+      } else {
+          console.log(`Player ${nickname} left room ${roomId}. ${remainingPlayers.length} players remaining.`);
+          
+          // If the disconnected player was admin, assign new admin
+          if (gameState.admin === uid) {
+              const newAdmin = remainingPlayers[0];
+              gameState.admin = newAdmin;
+              console.log(`New admin for room ${roomId}: ${newAdmin}`);
+              
+              // Notify new admin
+              const newAdminSocketId = gameState.socketMap[newAdmin];
+              if (newAdminSocketId) {
+                sendSystemMessage(roomId, `${gameState.players[newAdmin]?.nickname || 'Someone'} is now the admin`);
+                io.to(newAdminSocketId).emit('became_admin', {
+                    uid: newAdmin,
+                    nickname: gameState.players[newAdmin]?.nickname || "Unknown"
+                });
+
+                io.to(roomId).emit('admin_changed', {
+                    uid: newAdmin,
+                    nickname: gameState.players[newAdmin]?.nickname || "Unknown"
+                });
+
+              }
+          }
+          
+          // Update Redis with new state
+          await GameStateManager.updateRoom(roomId, gameState);
+          
+          // Notify remaining players
+          io.to(roomId).emit('update_leaderboard', gameState.players);
+          sendSystemMessage(roomId, `${nickname} left the game`); 
+          io.to(roomId).emit('player_disconnected', { 
+              uid, 
+              nickname, 
+              remainingPlayers: remainingPlayers.length 
+          });
+      }
+      
+      // Remove socket from room
+      socket.leave(roomId);
+      
+    } catch (error) {
+        console.error(`Error cleaning up player ${uid} from room ${roomId}:`, error);
+    }
+}
+
+// ──────────────────────────────────────────────────────────────
+// CHAT: user sends a message
+socket.on('chat_message', (data, callback) => {
+  // data = { roomId, text }
+  const { uid, nickname } = socket.data.user || {};
+  if (!uid || !data?.roomId || !data?.text?.trim()) return;
+
+  const payload = {
+    type: 'user',               // user | system
+    uid,
+    nickname,
+    text: data.text.trim(),
+    ts: Date.now()
+  };
+  io.to(data.roomId).emit('chat_message', payload);      // broadcast
+  callback?.({ ok: true });
 });
 
-    // TODO: Use react router to have shareable links for rooms
+// helper to emit system chat
+function sendSystemMessage(roomId, text) {               // ⬅️ ADDED
+  io.to(roomId).emit('chat_message', {
+    type: 'system',
+    text,
+    ts: Date.now()
+  });
+}
 
 
 
+// Replace the disconnect handler with this:
+socket.on('disconnecting', async (reason) => {
+  const { uid, nickname } = socket.data.user || {};
+  if (!uid) {
+    console.log('Client disconnecting (unauthenticated)');
+    return;
+  }
+
+  
+  console.log(`Client disconnecting: ${nickname} (${uid})`);
+  
+  // Get rooms BEFORE Socket.IO auto-leaves them
+  const currentRooms = Array.from(socket.rooms).filter(room => room !== socket.id);
+  console.log(`Player ${nickname} (${uid}) disconnecting from rooms:`, currentRooms);
+  
+  for (const roomId of currentRooms) {
+    await cleanupPlayerDisconnect(socket, roomId, uid, nickname);
+  }
+
+  await notifyFriendsStatusUpdate(uid);
+});
+
+// Keep this for logging (optional)
+socket.on('disconnect', () => {
+  console.log('Client fully disconnected');
+});
+
+
+});
+
+// TODO: Use react router to have shareable links for rooms
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`server running at http://localhost:${PORT}`);
 });
