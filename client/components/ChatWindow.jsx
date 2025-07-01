@@ -3,7 +3,6 @@ import React, { useEffect, useState, useRef, memo } from 'react';
 import { socket } from '../socket';
 import { useAuth } from '../src/contexts/AuthContext';
 
-// Memoized chat log to avoid remounting the input
 const ChatLog = memo(function ChatLog({ messages, currentUid }) {
   const bottomRef = useRef(null);
   useEffect(() => {

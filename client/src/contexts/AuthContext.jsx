@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { 
   signInAnonymously, 
   signInWithPopup, 
@@ -24,18 +24,15 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [showNicknamePrompt, setShowNicknamePrompt] = useState(false);
 
-  // Anonymous sign in with nickname[20][29]
   const signInAnonymouslyWithNickname = async (nickname) => {
     try {
       const userCredential = await signInAnonymously(auth);
       const user = userCredential.user;
       
-      // Update Firebase Auth profile[48]
       await updateProfile(user, {
         displayName: nickname
       });
       
-      // Store user data in Firestore
       await setDoc(doc(db, 'users', user.uid), {
         uid: user.uid,
         nickname: nickname,
@@ -58,19 +55,16 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Google sign in[27][33]
   const signInWithGoogle = async () => {
     try {
       const provider = new GoogleAuthProvider();
       const userCredential = await signInWithPopup(auth, provider);
       const user = userCredential.user;
       
-      // Check if user document exists
       const userDocRef = doc(db, 'users', user.uid);
       const userDoc = await getDoc(userDocRef);
       
       if (!userDoc.exists()) {
-        // Create user document for new Google users
         await setDoc(userDocRef, {
           uid: user.uid,
           nickname: user.displayName,
@@ -99,7 +93,6 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
-        // Check if user has a nickname/displayName
         if (!currentUser.displayName && currentUser.isAnonymous) {
           setShowNicknamePrompt(true);
         } else {

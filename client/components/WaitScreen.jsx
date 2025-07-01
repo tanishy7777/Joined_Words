@@ -1,13 +1,10 @@
 import React, { useState } from 'react';
 import ConfigOptions from "./ConfigOptions";
 import RoomId from "./RoomId";
-import ChatWindow from "./ChatWindow";
 import { useAuth } from '../src/contexts/AuthContext';
 
-// import FriendSystem from "./FriendSystem";
 
 export default function WaitScreen(props) {
-  const [showFriends, setShowFriends] = useState(false);
   const { isRoomAdmin, roomId, socket, players } = props;
   const { user } = useAuth();
   return (
@@ -24,12 +21,11 @@ export default function WaitScreen(props) {
       
       {isRoomAdmin && <ConfigOptions {...props} />}
       
-      {/* player list */}
       <div className="player-list">
         {players && Object.entries(players).map(([uid, p]) => (
           <div key={uid} className="player-row">
             <span>{p.nickname}</span>
-            {uid !== user.uid && (                       /* hide button for self */
+            {uid !== user.uid && (                      
               <button
                 onClick={() =>
                   socket.emit('send_friend_request', { targetUserUid: uid }, (res) =>

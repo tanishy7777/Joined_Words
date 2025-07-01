@@ -2,7 +2,12 @@ import { io } from 'socket.io-client';
 import { auth } from './src/firebase/config';
 
 // export const socket = io('http://localhost:3000', { autoConnect: false });
-export const socket = io('https://jwbackend-production.up.railway.app', {
+// export const socket = io('https://jwbackend-production.up.railway.app', {
+//   autoConnect: false,
+//   transports: ['websocket', 'polling'],
+// });
+
+export const socket = io('http://localhost:3000', {
   autoConnect: false,
   transports: ['websocket', 'polling'],
 });

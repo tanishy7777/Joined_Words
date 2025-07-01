@@ -15,10 +15,7 @@ function AppContent() {
   const [isRoomAdmin, setIsRoomAdmin] = React.useState(false);
   const [gameStarted, setGameStarted] = React.useState(false);
   const [friendsOpen, setFriendsOpen] = React.useState(false);
-  const [leaderboardData, setLeaderboardData] = useState({});
-
-  // Handle socket authentication when user changes
-  
+  const [leaderboardData, setLeaderboardData] = useState({});  
 
   // track leaderboard updates
   useEffect(() => {
@@ -131,62 +128,68 @@ function AppContent() {
     );
   }
 
-
-  function RoomHandler() {
-    const { user } = useAuth();
-    let navigate = useNavigate();
-    const { roomCode } = useParams();
-    const [gameStarted, setGameStarted] = useState(false);
-
-    useEffect(() => {
+    function RoomHandler() {
+      const { roomCode } = useParams();
+      const navigate = useNavigate();
+      
+      useEffect(() => {
         if (!roomCode || !user) return;
 
-        const onConnect = () => {
-        socket.emit('join_room', roomCode, (res) => {
+        const joinRoomFromURL = () => {
+          socket.emit('join_room', roomCode, (res) => {
             if (res.success) {
-            setRoomId(roomCode);
-            socket.emit('get_room_info', roomCode, ({ isAdmin, gameStarted }) => {
+              setRoomId(roomCode);
+              socket.emit('get_room_info', roomCode, ({ isAdmin, gameStarted }) => {
                 setIsRoomAdmin(!!isAdmin);
-                if (gameStarted) {
-                setGameStarted(true);
-                }
-            });
-            navigate(`/room/${roomCode}`);
+                setGameStarted(!!gameStarted);
+              });
             } else {
-            alert('Failed to join room');
+              alert('Failed to join room. Redirecting to home.');
+              navigate('/');
             }
-        });
+          });
         };
 
         if (socket.connected) {
-        onConnect();
+          joinRoomFromURL();
         } else {
-        socket.once('connect', onConnect);
+          socket.once('connect', joinRoomFromURL);
         }
 
-        socket.on('load_game_component', () => {
-        setGameStarted(true);
-        });
+        const handleGameStart = () => {
+          setGameStarted(true);
+        };
+
+        socket.on('load_game_component', handleGameStart);
 
         return () => {
-        socket.off('connect', onConnect);
-        socket.off('load_game_component');
+          socket.off('connect', joinRoomFromURL);
+          socket.off('load_game_component', handleGameStart);
         };
-    }, [roomCode, user]);
+      }, [roomCode, user, navigate]);
 
-    return (
+      if (!user || loading) {
+        return <div>Loading...</div>;
+      }
+
+      if (!roomId || roomId !== roomCode) {
+        return <div>Joining room...</div>;
+      }
+
+      return (
         <>
-        {roomId && !gameStarted && 
-        <WaitScreen 
+          {!gameStarted && (
+            <WaitScreen 
               isRoomAdmin={isRoomAdmin} 
               roomId={roomId} 
               socket={socket}
               players={leaderboardData}
-          />}
-        {roomId && gameStarted && <Game roomId={roomId} socket={socket}/>}
+            />
+          )}
+          {gameStarted && <Game roomId={roomId} socket={socket}/>}
         </>
     );
-}
+  }
 
   // In your React components
   useEffect(() => {
@@ -214,15 +217,6 @@ function AppContent() {
   }, [socket]);
 
 
-  useEffect(() => {
-    socket.on('load_game_component', () => {
-      setGameStarted(true);
-    });
-    
-    return () => {
-      socket.off('load_game_component');
-    };
-  }, []);
 
    // Show loading or nickname prompt
   if (loading) return <div>Loading…</div>;
@@ -242,19 +236,7 @@ function AppContent() {
           <Route path="/" element={<HandleRoom />} />
           <Route path="/room/:roomCode" element={
             <>
-              {!gameStarted
-                ? <WaitScreen
-                    isRoomAdmin={isRoomAdmin}
-                    roomId={roomId}
-                    socket={socket}
-                    players={leaderboardData}  // leaderboard lifted to AppContent
-                  />
-                : <Game
-                    roomId={roomId}
-                    socket={socket}
-                  />
-              }
-              {/* Chat appears on all room screens */}
+              <RoomHandler />
               <ChatWindow roomId={roomId} className={gameStarted ? 'game-chat' : 'wait-chat'} />
             </>
           }/>

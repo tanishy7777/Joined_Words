@@ -184,7 +184,6 @@ export default function FriendSystem({ isOpen, onClose, currentRoomId }) {
   }, []);
 
   useEffect(() => {
-  // When the server notifies us, reload friends
     socket.on('friends_status_update', loadFriends);
     return () => {
       socket.off('friends_status_update', loadFriends);
