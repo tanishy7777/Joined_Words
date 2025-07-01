@@ -29,7 +29,8 @@ if (process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
     Buffer.from(process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64, 'base64').toString('utf-8')
   );
 } else {
-  serviceAccount = require('./jwmultiplayer-firebase-adminsdk-2952g-1bfce059ed.json');
+  // serviceAccount = require('./jwmultiplayer-firebase-adminsdk-2952g-1bfce059ed.json');
+  serviceAccount = require('./jw-daily-firebase-adminsdk.json');
 }
 
 // Initialize Firebase Admin
@@ -147,6 +148,9 @@ async function notifyFriendsStatusUpdate(uid) {
   }
 }
 
+const RECONNECTION_GRACE_PERIOD = 5000; // 5 seconds
+const playerReconnectionTimers = new Map(); // Track reconnection timers
+
 
 io.on('connection',  (socket) => {
   console.log('New client connected');     
@@ -255,42 +259,56 @@ io.on('connection',  (socket) => {
 
     
     socket.on('join_room', async (roomId, callback) => {
-      const { uid, nickname } = socket.data.user;             // ⬅️ CHANGED
-      if (!uid) {
-        return callback({ success: false, reason: 'NOT_AUTHENTICATED' });
-      }
+      const { uid, nickname } = socket.data.user;
+      if (!uid) return callback({ success: false, reason: 'NOT_AUTHENTICATED' });
+
       await notifyFriendsStatusUpdate(uid);
-      
-      const currentState = await GameStateManager.getRoom(roomId);      
-      if (!currentState) {
-          console.log('Room not found:', roomId);
-          if (typeof callback === 'function') {
-              callback({ success: false, reason: 'ROOM_NOT_FOUND' });
-          }
-          return;
+
+      const currentState = await GameStateManager.getRoom(roomId);
+      if (!currentState) return callback({ success: false, reason: 'ROOM_NOT_FOUND' });
+
+      // Reconnection: player exists, but not mapped to a socket
+      const isReconnection = !!currentState.players[uid] && !currentState.socketMap[uid];
+      if (isReconnection) {
+        // Cancel pending removal timer
+        const timerKey = `${uid}_${roomId}`;
+        if (playerReconnectionTimers.has(timerKey)) {
+          clearTimeout(playerReconnectionTimers.get(timerKey));
+          playerReconnectionTimers.delete(timerKey);
+        }
+        currentState.socketMap[uid] = socket.id;
+        await GameStateManager.updateRoom(roomId, currentState);
+        socket.join(roomId);
+        sendSystemMessage(roomId, `${nickname} reconnected`);
+        io.to(roomId).emit('update_leaderboard', currentState.players);
+        return callback?.({ success: true, isReconnection: true });
       }
-        
-        // 1. Initialize player state
-        // Initialize player with Firebase UID
-        currentState.players[uid] = { 
-          playerScore: 0, 
-          nickname: nickname,
-          socketId: socket.id 
+
+      // Already present and connected: do nothing (idempotent)
+      if (currentState.players[uid] && currentState.socketMap[uid]) {
+        socket.join(roomId);
+        return callback?.({ success: true, alreadyPresent: true });
+      }
+
+      // New player
+      if (!currentState.players[uid]) {
+        currentState.players[uid] = {
+          playerScore: 0,
+          nickname,
+          socketId: socket.id
         };
         currentState.score[uid] = 100;
         currentState.cluesAnswered[uid] = [false, false];
-        currentState.socketMap[uid] = socket.id;
-
-        // 2. Update Redis
-        await GameStateManager.updateRoom(roomId, currentState);
-        socket.join(roomId);
-        console.log('Room joined:', roomId, 'Socket ID:', socket.id);
-        
-        // 3. Update all clients
-        io.to(roomId).emit('update_leaderboard', currentState.players);
-        
-        callback?.({ success: true });
+      }
+      currentState.socketMap[uid] = socket.id;
+      await GameStateManager.updateRoom(roomId, currentState);
+      socket.join(roomId);
+      sendSystemMessage(roomId, `${nickname} joined the game`);
+      io.to(roomId).emit('update_leaderboard', currentState.players);
+      callback?.({ success: true });
     });
+
+
     
 
     socket.on('get_leaderboard', async (roomId) => {
@@ -750,91 +768,125 @@ async function cleanupPlayerFromRoom(socket, roomId, uid) {
   }
 }
 
-  // Helper function to handle player disconnect cleanup
-async function cleanupPlayerDisconnect(socket, roomId, uid, nickname) {
+// MODIFIED: Enhanced cleanup function with reconnection grace period
+async function cleanupPlayerDisconnect(socket, roomId, uid, nickname, isReload = false) {
   try {
-      await notifyFriendsStatusUpdate(uid);
-      const gameState = await GameStateManager.getRoom(roomId);
-      if (!gameState) {
-          console.log(`Room ${roomId} not found during cleanup`);
-          return;
-      }
-
-      // Remove player from game state
-      if (gameState.players[uid]) {
-          delete gameState.players[uid];
-          delete gameState.score[uid];
-          delete gameState.cluesAnswered[uid];
-          delete gameState.socketMap[uid];
-      }
-
-      // Check if room is now empty
-      const remainingPlayers = Object.keys(gameState.players);
-      console.log(`Remaining players in room ${roomId}:`, remainingPlayers.length);
-      if (remainingPlayers.length === 0) {
-          // No players left - delete the room entirely
-          console.log(`Deleting empty room: ${roomId}`);
-          
-          // Clean up Redis data
-          await GameStateManager.deleteRoom(roomId);
-          await redisClient.srem('public_rooms', roomId);
-          
-          // Clean up any pending invitations for this room
-          const invitationKeys = await redisClient.keys(`game_invitation:*`);
-          for (const key of invitationKeys) {
-              const invitationData = await redisClient.get(key);
-              if (invitationData) {
-                  const invitation = JSON.parse(invitationData);
-                  if (invitation.roomId === roomId) {
-                      await redisClient.del(key);
-                  }
-              }
-          }
-      } else {
-          console.log(`Player ${nickname} left room ${roomId}. ${remainingPlayers.length} players remaining.`);
-          
-          // If the disconnected player was admin, assign new admin
-          if (gameState.admin === uid) {
-              const newAdmin = remainingPlayers[0];
-              gameState.admin = newAdmin;
-              console.log(`New admin for room ${roomId}: ${newAdmin}`);
-              
-              // Notify new admin
-              const newAdminSocketId = gameState.socketMap[newAdmin];
-              if (newAdminSocketId) {
-                sendSystemMessage(roomId, `${gameState.players[newAdmin]?.nickname || 'Someone'} is now the admin`);
-                io.to(newAdminSocketId).emit('became_admin', {
-                    uid: newAdmin,
-                    nickname: gameState.players[newAdmin]?.nickname || "Unknown"
-                });
-
-                io.to(roomId).emit('admin_changed', {
-                    uid: newAdmin,
-                    nickname: gameState.players[newAdmin]?.nickname || "Unknown"
-                });
-
-              }
-          }
-          
-          // Update Redis with new state
-          await GameStateManager.updateRoom(roomId, gameState);
-          
-          // Notify remaining players
-          io.to(roomId).emit('update_leaderboard', gameState.players);
-          sendSystemMessage(roomId, `${nickname} left the game`); 
-          io.to(roomId).emit('player_disconnected', { 
-              uid, 
-              nickname, 
-              remainingPlayers: remainingPlayers.length 
-          });
-      }
-      
-      // Remove socket from room
-      socket.leave(roomId);
-      
-    } catch (error) {
-        console.error(`Error cleaning up player ${uid} from room ${roomId}:`, error);
+    await notifyFriendsStatusUpdate(uid);
+    
+    const gameState = await GameStateManager.getRoom(roomId);
+    if (!gameState) {
+      console.log(`Room ${roomId} not found during cleanup`);
+      return;
     }
+
+    if (isReload) {
+      console.log(`Setting reconnection grace period for ${nickname} in room ${roomId}`);
+      
+      // CRITICAL FIX: Clear socket mapping for this player
+      if (gameState.socketMap && gameState.socketMap[uid]) {
+        delete gameState.socketMap[uid];
+        // Persist this change immediately
+        await GameStateManager.updateRoom(roomId, gameState);
+        console.log(`Cleared socket mapping for ${nickname}`);
+      }
+      
+      // Timer management
+      const timerKey = `${uid}_${roomId}`;
+      if (playerReconnectionTimers.has(timerKey)) {
+        clearTimeout(playerReconnectionTimers.get(timerKey));
+      }
+      
+      const timer = setTimeout(async () => {
+        console.log(`Grace period expired for ${nickname}, removing from room ${roomId}`);
+        await actuallyRemovePlayer(roomId, uid, nickname);
+        playerReconnectionTimers.delete(timerKey);
+      }, RECONNECTION_GRACE_PERIOD);
+      
+      playerReconnectionTimers.set(timerKey, timer);
+      socket.leave(roomId);
+      sendSystemMessage(roomId, `${nickname} disconnected (may reconnect...)`);
+      return;
+    }
+    
+    // Tab close handling
+    await actuallyRemovePlayer(roomId, uid, nickname);
+    socket.leave(roomId);
+    
+  } catch (error) {
+    console.error(`Error cleaning up player ${uid} from room ${roomId}:`, error);
+  }
+}
+
+
+// NEW: Actual player removal logic
+async function actuallyRemovePlayer(roomId, uid, nickname) {
+  const gameState = await GameStateManager.getRoom(roomId);
+  if (!gameState) return;
+
+  // Remove player from game state
+  if (gameState.players[uid]) {
+    delete gameState.players[uid];
+    delete gameState.score[uid];
+    delete gameState.cluesAnswered[uid];
+    delete gameState.socketMap[uid];
+  }
+
+  // Check if room is now empty
+  const remainingPlayers = Object.keys(gameState.players);
+  console.log(`Remaining players in room ${roomId}:`, remainingPlayers.length);
+  
+  if (remainingPlayers.length === 0) {
+    // No players left - delete the room entirely
+    console.log(`Deleting empty room: ${roomId}`);
+    await GameStateManager.deleteRoom(roomId);
+    await redisClient.srem('public_rooms', roomId);
+    
+    // Clean up any pending invitations for this room
+    const invitationKeys = await redisClient.keys(`game_invitation:*`);
+    for (const key of invitationKeys) {
+      const invitationData = await redisClient.get(key);
+      if (invitationData) {
+        const invitation = JSON.parse(invitationData);
+        if (invitation.roomId === roomId) {
+          await redisClient.del(key);
+        }
+      }
+    }
+  } else {
+    console.log(`Player ${nickname} left room ${roomId}. ${remainingPlayers.length} players remaining.`);
+    
+    // If the disconnected player was admin, assign new admin
+    if (gameState.admin === uid) {
+      const newAdmin = remainingPlayers[0];
+      gameState.admin = newAdmin;
+      console.log(`New admin for room ${roomId}: ${newAdmin}`);
+      
+      const newAdminSocketId = gameState.socketMap[newAdmin];
+      if (newAdminSocketId) {
+        sendSystemMessage(roomId, `${gameState.players[newAdmin]?.nickname || 'Someone'} is now the admin`);
+        io.to(newAdminSocketId).emit('became_admin', {
+          uid: newAdmin,
+          nickname: gameState.players[newAdmin]?.nickname || "Unknown"
+        });
+        io.to(roomId).emit('admin_changed', {
+          uid: newAdmin,
+          nickname: gameState.players[newAdmin]?.nickname || "Unknown"
+        });
+      }
+    }
+    
+    // Update Redis with new state
+    await GameStateManager.updateRoom(roomId, gameState);
+    
+    // Notify remaining players
+    io.to(roomId).emit('update_leaderboard', gameState.players);
+    sendSystemMessage(roomId, `${nickname} left the game`);
+    io.to(roomId).emit('player_disconnected', {
+      uid,
+      nickname,
+      remainingPlayers: remainingPlayers.length
+    });
+  }
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -868,24 +920,25 @@ function sendSystemMessage(roomId, text) {               // ⬅️ ADDED
 
 // Replace the disconnect handler with this:
 socket.on('disconnecting', async (reason) => {
-  const { uid, nickname } = socket.data.user || {};
-  if (!uid) {
-    console.log('Client disconnecting (unauthenticated)');
-    return;
-  }
+    const { uid, nickname } = socket.data.user || {};
+    if (!uid) {
+      console.log('Client disconnecting (unauthenticated)');
+      return;
+    }
 
-  
-  console.log(`Client disconnecting: ${nickname} (${uid})`);
-  
-  // Get rooms BEFORE Socket.IO auto-leaves them
-  const currentRooms = Array.from(socket.rooms).filter(room => room !== socket.id);
-  console.log(`Player ${nickname} (${uid}) disconnecting from rooms:`, currentRooms);
-  
-  for (const roomId of currentRooms) {
-    await cleanupPlayerDisconnect(socket, roomId, uid, nickname);
-  }
+    console.log(`Client disconnecting: ${nickname} (${uid}), reason: ${reason}`);
+    
+    // Detect if this is likely a page reload vs tab close
+    const isReload = reason === 'transport close' || reason === 'client namespace disconnect';
+    
+    const currentRooms = Array.from(socket.rooms).filter(room => room !== socket.id);
+    console.log(`Player ${nickname} (${uid}) disconnecting from rooms:`, currentRooms);
+    
+    for (const roomId of currentRooms) {
+      await cleanupPlayerDisconnect(socket, roomId, uid, nickname, isReload);
+    }
 
-  await notifyFriendsStatusUpdate(uid);
+    await notifyFriendsStatusUpdate(uid);
 });
 
 // Keep this for logging (optional)

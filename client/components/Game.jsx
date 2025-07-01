@@ -9,7 +9,7 @@ export default function Game(props) {
     const [timer, setTimer] = useState(null);
     const [score, setScore] = useState(null);
 
-    const { user } = useAuth(); // ⬅️ ADD THIS
+    const { user } = useAuth(); 
 
     useEffect(() => {
         function startTimer(countdownTime) {

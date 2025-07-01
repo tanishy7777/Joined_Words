@@ -2,10 +2,13 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   server: {
-    host: '0.0.0.0',                 // listen on all network interfaces
-    port: 5173,                      // your dev port
+    // the server is accessible from other devices on the LAN
+    host: '0.0.0.0',               
+    port: 5173,                      
     hmr: {
-      host: '192.168.189.175',       // replace with your machine’s LAN IP
+      // Without hmr.host: remote devices try to connect to localhost and fail.
+      host: '192.168.189.175',
+      // hot module replacement (HMR) protocol using WebSocket
       protocol: 'ws',
       port: 5173
     }
