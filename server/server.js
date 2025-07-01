@@ -1,11 +1,8 @@
 import express from 'express';
 import { createServer } from 'node:http';
-import { join } from 'node:path';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import { getFirestore } from 'firebase-admin/firestore';
-import { dirname } from "path";
-import { fileURLToPath } from "url";
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -14,31 +11,24 @@ const PORT = process.env.PORT || 3000;
 import { readFileSync } from 'fs';
 const data = JSON.parse(readFileSync('./data.json', 'utf-8'));
 
-// import { createClient } from 'redis';
-// import { createAdapter } from '@socket.io/redis-adapter';
+// Redis setup
 import { Redis } from '@upstash/redis'
 const redisClient = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL,
   token: process.env.UPSTASH_REDIS_REST_TOKEN,
-})// Redis setup
-// const redisClient = createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' });
-// const pubClient = Redis.fromEnv();
-// const subClient = Redis.fromEnv();
+})
 
-// await Promise.all([redisClient.connect(), pubClient.connect(), subClient.connect()]);
 
 // Authentication and Firebase Admin SDK setup
 import admin from 'firebase-admin';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
-// const serviceAccount = require('./jwmultiplayer-firebase-adminsdk-2952g-1bfce059ed.json');
 let serviceAccount;
 if (process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
   serviceAccount = JSON.parse(
     Buffer.from(process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64, 'base64').toString('utf-8')
   );
 } else {
-  // fallback for local dev
   serviceAccount = require('./jwmultiplayer-firebase-adminsdk-2952g-1bfce059ed.json');
 }
 
@@ -51,18 +41,15 @@ const app = express();
 const server = createServer(app);
 const io = new Server(server, {
     cors: {
-        // origin: "http://35.207.196.68:5173",
         origin: "http://localhost:5173", 
         methods: ["GET", "POST"],       
         credentials: true, 
     },
-    // adapter: createAdapter(pubClient, subClient)
 });
 
 
 app.use(cors({
     origin: "http://localhost:5173",
-    // origin: "http://35.207.196.68:5173",
     methods: ["GET", "POST"],
     credentials: true,
 }));
@@ -77,7 +64,7 @@ io.use(async (socket, next) => {
   if (!uid || !nickname) {
     return next(new Error('Authentication required'));
   }
-  socket.data.user = { uid, nickname };          // ⬅️ CHANGED: assign without verify
+  socket.data.user = { uid, nickname };
   next();
 });
 

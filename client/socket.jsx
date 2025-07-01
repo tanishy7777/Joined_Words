@@ -9,12 +9,12 @@ export const socket = io('https://jwbackend-production.up.railway.app', {
 export const updateSocketAuth = async () => {
   const user = auth.currentUser;
   if (user) {
-    const token = await user.getIdToken();        // still fetch if you need token later
+    const token = await user.getIdToken();       
     socket.auth = {
       uid: user.uid,
       nickname: user.displayName || 'Anonymous'
     };
-    socket.connect();                             // ⬅️ connect only after auth set
+    socket.connect();                             
   } else {
     socket.disconnect();
   }
