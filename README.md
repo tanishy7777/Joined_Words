@@ -8,7 +8,7 @@ Features:
 - Nicknames, Anonymous Signin(firebase)
 
 Bug Fixes:
-- Reload
+- Reloading maintains the state
 
 v0.2.0
 - UI change
