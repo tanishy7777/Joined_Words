@@ -2,10 +2,13 @@
 This repo adds multiplayer functionality to the Joined Words Game
 
 v0.3.0
+
 Features:
+
 - Nicknames, Anonymous Signin(firebase)
-Fixes:
-- Reload fix
+
+Bug Fixes:
+- Reload
 
 v0.2.0
 - UI change
