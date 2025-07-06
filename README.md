@@ -1,13 +1,17 @@
 # Joined_Words
 This repo adds multiplayer functionality to the Joined Words Game
 
+v0.3.0
+Features:
+- Nicknames, Anonymous Signin(firebase)
+Fixes:
+- Reload fix
+
 v0.2.0
 - UI change
 - Admin Settings, Copy link feature, leaderboard and scoring
   
 https://github.com/user-attachments/assets/0ef7d876-d14f-4c0e-90e1-4051d4927c13
-
-
 
 v0.1.0
 - very basic scaffolding and backend
