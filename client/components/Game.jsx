@@ -52,13 +52,25 @@ export default function Game(props) {
 
     
     return (
-        <div>
-            <h1>Game Component</h1>
-            <RoomId roomId={props.roomId} />            
-            <p className="time-txt">Time left: {timer}</p>
-            <p className="score-txt">Score: {score}</p>
+        <div className="min-h-screen bg-blue-50 p-4 flex justify-center">
+            <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl p-6 space-y-6">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+                <h1 className="text-2xl font-bold text-blue-900">Game</h1>
+                <RoomId roomId={props.roomId} />
+            </div>
+
+            {/* Stats */}
+            <div className="flex space-x-6">
+                <p className="text-blue-800">⏱ Time left: <span className="font-semibold">{timer}</span></p>
+                <p className="text-blue-800">⭐ Score: <span className="font-semibold">{score}</span></p>
+            </div>
+
+            {/* Q&A + Leaderboard */}
             <QuestionAnswer socket={socket} roomId={props.roomId} />
             <Leaderboard socket={socket} roomId={props.roomId} currentUserUid={user?.uid} />
+            </div>
         </div>
-    )
+        );
+
 }

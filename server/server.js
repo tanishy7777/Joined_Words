@@ -171,6 +171,8 @@ io.on('connection',  async (socket) => {
     // Set up the socket data with user info
     socket.on('get_room_info', async (roomId, callback) => {
       const gameState = await GameStateManager.getRoom(roomId);
+      console.log(`Fetching room info for roomId: ${roomId}, gameState:`, gameState.admin);
+
       const { uid } = socket.data.user;
       if (!gameState || !uid) {
         return callback({ error: true });
@@ -494,15 +496,12 @@ async function cleanupPlayerDisconnect(socket, roomId, uid, nickname, isReload =
     if (isReload) {
       console.log(`Setting reconnection grace period for ${nickname} in room ${roomId}`);
       
-      // CRITICAL FIX: Clear socket mapping for this player
       if (gameState.socketMap && gameState.socketMap[uid]) {
         delete gameState.socketMap[uid];
-        // Persist this change immediately
         await GameStateManager.updateRoom(roomId, gameState);
         console.log(`Cleared socket mapping for ${nickname}`);
       }
       
-      // Timer management
       const timerKey = `${uid}_${roomId}`;
       if (playerReconnectionTimers.has(timerKey)) {
         clearTimeout(playerReconnectionTimers.get(timerKey));
@@ -519,7 +518,6 @@ async function cleanupPlayerDisconnect(socket, roomId, uid, nickname, isReload =
       return;
     }
     
-    // Tab close handling
     await actuallyRemovePlayer(roomId, uid, nickname);
     socket.leave(roomId);
     
@@ -610,13 +608,15 @@ socket.on('disconnecting', async (reason) => {
       return;
     }
 
-    console.log(`Client disconnecting: ${nickname} (${uid}), reason: ${reason}`);
+    // console.log(`Client disconnecting: ${nickname} (${uid}), reason: ${reason}`);
     
     // Detect if this is likely a page reload vs tab close
     const isReload = reason === 'transport close' || reason === 'client namespace disconnect';
-    
+    if(isReload){
+      console.log(`Detected page reload for ${nickname} (${uid})`);
+    }
     const currentRooms = Array.from(socket.rooms).filter(room => room !== socket.id);
-    console.log(`Player ${nickname} (${uid}) disconnecting from rooms:`, currentRooms);
+    // console.log(`Player ${nickname} (${uid}) disconnecting from rooms:`, currentRooms);
     
     for (const roomId of currentRooms) {
       await cleanupPlayerDisconnect(socket, roomId, uid, nickname, isReload);
@@ -626,7 +626,7 @@ socket.on('disconnecting', async (reason) => {
 
 // Keep this for logging (optional)
 socket.on('disconnect', () => {
-  console.log('Client fully disconnected');
+  // console.log('Client fully disconnected');
 });
 
 

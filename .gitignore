@@ -22,3 +22,20 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+
+server/node_modules
+client/node_modules
+server/config
+server/models 
+server/sockets
+server/utils
+server/routes
+.env 
+.gitignore
+
+client/src/firebase
+server/jwmultiplayer-firebase-adminsdk-2952g-1bfce059ed.json
+server/jw-daily-firebase-adminsdk.json
+server/google-services (2).json
+server/app.js 

@@ -53,18 +53,18 @@ function AppContent() {
     if (user) handleAuthChange();
   }, [user]);
 
-  useEffect(() => {
-    if (!user || !roomId) return;
+  // useEffect(() => {
+  //   if (!user || !roomId) return;
 
-    socket.emit('join_room', roomId, (res) => {
-      if (res.success) {
-        // Fetch room info (like isAdmin) after successful join
-        socket.emit('get_room_info', roomId, ({ isAdmin }) => {
-          setIsRoomAdmin(!!isAdmin);
-        });
-      }
-    });
-  }, [user, roomId]);
+  //   socket.emit('join_room', roomId, (res) => {
+  //     if (res.success) {
+  //       // Fetch room info (like isAdmin) after successful join
+  //       socket.emit('get_room_info', roomId, ({ isAdmin }) => {
+  //         setIsRoomAdmin(!!isAdmin);
+  //       });
+  //     }
+  //   });
+  // }, [user, roomId]);
 
   // Fixed room creation
   const createRoom = (navigate) => {
@@ -128,10 +128,18 @@ function AppContent() {
       if (!roomCode || !user) return;
 
       const joinRoomFromURL = () => {
+        console.log(
+          "%c[C->S] Joining room with code: {roomCode}",
+          "color: green; font-weight: bold;", roomCode
+        );
         socket.emit('join_room', roomCode, (res) => {
           if (res.success) {
             setRoomId(roomCode);
             socket.emit('get_room_info', roomCode, ({ isAdmin, gameStarted }) => {
+              console.log(
+                "%c[C->S] Room info fetched for room code: {roomCode}",
+                "color: green; font-weight: bold;", roomCode, isAdmin, gameStarted
+              );
               setIsRoomAdmin(!!isAdmin);
               setGameStarted(!!gameStarted);
             });
@@ -155,19 +163,19 @@ function AppContent() {
     }, [roomCode, user, navigate]);
 
     if (!user || loading) return <div>Loading...</div>;
-    if (!roomId || roomId !== roomCode) return <div>Joining room...</div>;
+    if (!roomCode) return <div>Joining room...</div>;
 
     return (
       <>
         {!gameStarted ? (
           <WaitScreen 
             isRoomAdmin={isRoomAdmin} 
-            roomId={roomId} 
+            roomId={roomCode} 
             socket={socket}
             players={leaderboardData}
           />
         ) : (
-          <Game roomId={roomId} socket={socket}/>
+          <Game roomId={roomCode} socket={socket}/>
         )}
       </>
     );
@@ -176,23 +184,64 @@ function AppContent() {
   function HandleRoom() {
     const navigate = useNavigate();
     return (
-      <div className='room-div'>
-        <button id='join-random-btn' onClick={() => joinRandomRoom(navigate)}>
+      // <div className='room-div'>
+      //   <button id='join-random-btn' onClick={() => joinRandomRoom(navigate)}>
+      //     Join Random Room
+      //   </button>
+        
+      //   <form onSubmit={(e) => {
+      //     e.preventDefault();
+      //     joinRoom(navigate, new FormData(e.target));
+      //   }}>
+      //     <input id='room-id-input' type="text" name="roomId" placeholder="Enter Room ID"/>
+      //     <button id="join-room-btn">Join Room</button>
+      //   </form>
+        
+      //   <button id='create-room-btn' onClick={() => createRoom(navigate)}>
+      //     Create Room
+      //   </button>
+      // </div>
+      <div className="min-h-screen bg-blue-50 flex items-center justify-center p-4">
+      <div className="bg-white max-w-md w-full rounded-2xl shadow-lg p-6 space-y-6">
+        {/* Join Random */}
+        <button
+          onClick={() => joinRandomRoom(navigate)}
+          className="w-full bg-blue-800 text-white py-2 rounded-lg font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+        >
           Join Random Room
         </button>
-        
-        <form onSubmit={(e) => {
-          e.preventDefault();
-          joinRoom(navigate, new FormData(e.target));
-        }}>
-          <input id='room-id-input' type="text" name="roomId" placeholder="Enter Room ID"/>
-          <button id="join-room-btn">Join Room</button>
+
+        {/* Join by Code */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            joinRoom(navigate, new FormData(e.target));
+          }}
+          className="flex space-x-2"
+        >
+          <input
+            name="roomId"
+            type="text"
+            placeholder="Enter Room ID"
+            className="flex-1 px-4 py-2 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+          />
+          <button
+            type="submit"
+            className="bg-blue-800 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+          >
+            Join
+          </button>
         </form>
-        
-        <button id='create-room-btn' onClick={() => createRoom(navigate)}>
+
+        {/* Create New */}
+        <button
+          onClick={() => createRoom(navigate)}
+          className="w-full bg-blue-800 text-white py-2 rounded-lg font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+        >
           Create Room
         </button>
       </div>
+    </div>
     );
   }
 

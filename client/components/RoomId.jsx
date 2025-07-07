@@ -1,23 +1,26 @@
 import React from 'react';
+import { ClipboardDocumentIcon } from '@heroicons/react/24/outline';
+
 export default function RoomId(props) {
 
     function copyLinkToClipboard(){
         const roomLink = window.location.href;
         navigator.clipboard.writeText(roomLink);
+        
     }
 
+    // <button
+    //             onClick={copyLinkToClipboard}
+    //             className="p-1 rounded hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-300"
+    //             aria-label="Copy room link">
+    //             {/* use whichever Heroicon you prefer */}
+    //             <ClipboardDocumentIcon className="h-5 w-5 text-blue-600" />
+    //         </button>
+
     return (
-        <div id="room-id-div">
-            <p id="room-id-txt">Room ID: {props.roomId}</p>
-            <button id="copy-link-btn" onClick={copyLinkToClipboard}>
+        <div className="flex items-center space-x-2">
+            <p className="text-white-900 font-medium"><span className="font-mono">{props.roomId}</span></p>
             
-                <img
-                    src="https://img.icons8.com/?size=100&id=86201&format=png&color=E5E1E1"
-                    alt="Copy Icon"
-                    style={{ width: "20px", height: "20px" }}
-                />
-        
-            </button>
         </div>
     );
 }

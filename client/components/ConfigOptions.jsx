@@ -1,81 +1,87 @@
 import React from 'react';
+
 export default function ConfigOptions(props) {
-    const handleConfigChange = (setting, value) => {
-        props.socket.emit('update_config', props.roomId, {
-            [setting]: value
-        });
-    };
+  const { roomId, socket } = props;
 
-    const startGame = (e) => {
-        e.preventDefault();
-        console.log('Start game clicked');
-        props.socket.emit('start_game', props.roomId, false);
-    };
+  const handleConfigChange = (setting, value) => {
+    socket.emit('update_config', roomId, { [setting]: value });
+  };
 
-    return (
-        <div className="config-options-div">
-            <h3>Game Configuration</h3>
-            <form onSubmit={startGame}>
-                {/* Number of words field */}
-                <fieldset id="num-of-words">
-                    <legend>Number of words</legend>
-                    {[1, 3, 5].map(num => (
-                        <label key={num}>
-                            <input
-                                type="radio"
-                                name="num_of_words"
-                                value={num}
-                                defaultChecked={num === 3}
-                                onChange={(e) => handleConfigChange('numOfWords', Number(e.target.value))}
-                            />
-                            {num} word{num !== 1 ? 's' : ''}
-                        </label>
-                    ))}
-                </fieldset>
+  const startGame = (e) => {
+    e.preventDefault();
+    socket.emit('start_game', roomId, false);
+  };
 
-                {/* Time per question field */}
-                <fieldset id="time-per-question">
-                    <legend>Time per Question</legend>
-                    {[1, 2, 3].map(time => (
-                        <label key={time}>
-                            <input
-                                type="radio"
-                                name="time_per_question"
-                                value={time}
-                                defaultChecked={time === 1}
-                                onChange={(e) => handleConfigChange('timePerQuestion', Number(e.target.value))}
-                            />
-                            {time} min
-                        </label>
-                    ))}
-                </fieldset>
+  // Tailwind‑friendly helper for radio groups
+  const RadioGroup = ({ legend, options, name, onChange, defaultValue, formatLabel }) => (
+    <fieldset className="mb-4">
+      <legend className="text-blue-800 font-medium mb-2">{legend}</legend>
+      <div className="flex space-x-6">
+        {options.map(opt => (
+          <label key={opt.value} className="inline-flex items-center space-x-2 cursor-pointer">
+            <input
+              type="radio"
+              name={name}
+              value={opt.value}
+              defaultChecked={opt.value === defaultValue}
+              onChange={() => onChange(opt.value)}
+              className="form-radio text-blue-600 h-5 w-5"
+            />
+            <span className="text-blue-900">{formatLabel ? formatLabel(opt.value) : opt.label}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
 
-                {/* Privacy field */}
-                <fieldset id="private-game">
-                    <legend>Private Game?</legend>
-                    <label>
-                        <input
-                            type="radio"
-                            name="private_game"
-                            value="yes"
-                            defaultChecked
-                            onChange={() => handleConfigChange('isPrivateGame', true)}
-                        />
-                        Yes
-                    </label>
-                    <label>
-                        <input
-                            type="radio"
-                            name="private_game"
-                            value="no"
-                            onChange={() => handleConfigChange('isPrivateGame', false)}
-                        />
-                        No
-                    </label>
-                </fieldset>
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+      <h3 className="text-xl font-semibold text-blue-900 mb-4">
+        Game Configuration
+      </h3>
+      <form onSubmit={startGame} className="space-y-4">
+        {/* Number of words */}
+        <RadioGroup
+          legend="Number of words"
+          name="num_of_words"
+          options={[
+            { value: 1, label: '1 word' },
+            { value: 3, label: '3 words' },
+            { value: 5, label: '5 words' },
+          ]}
+          defaultValue={3}
+          onChange={(val) => handleConfigChange('numOfWords', val)}
+        />
 
-                <button id="start-game-btn">Start Game</button>
-            </form>
-        </div>
-    );
+        {/* Time per question */}
+        <RadioGroup
+          legend="Time per Question"
+          name="time_per_question"
+          options={[1, 2, 3].map(n => ({ value: n, label: `${n} min` }))}
+          defaultValue={1}
+          onChange={(val) => handleConfigChange('timePerQuestion', val)}
+        />
+
+        {/* Private game */}
+        <RadioGroup
+          legend="Private Game?"
+          name="private_game"
+          options={[
+            { value: true, label: 'Yes' },
+            { value: false, label: 'No' },
+          ]}
+          defaultValue={true}
+          formatLabel={(v) => (v ? 'Yes' : 'No')}
+          onChange={(val) => handleConfigChange('isPrivateGame', val)}
+        />
+
+        <button
+          type="submit"
+          className="w-full mt-4 bg-blue-800 text-white py-2 rounded-lg font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+        >
+          Start Game
+        </button>
+      </form>
+    </div>
+  );
 }

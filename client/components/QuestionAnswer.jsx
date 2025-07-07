@@ -139,39 +139,57 @@ export default function QuestionAnswer(props){
         };
 
     return (
+    <div className="space-y-4">
+        {/* Countdown to next word */}
+        {timerActiveRef.current && (
+        <p className="text-sm text-blue-600 italic">Next word in {newWordTimer}s</p>
+        )}
+
+        {/* Clue Cards */}
+        {/* Clue Cards */}
+            {/* Clue Cards */}
+<div className="flex space-x-4">
+  {[{ front: clue1, back: answer1, flipped: flipped1 },
+    { front: clue2, back: answer2, flipped: flipped2 }
+  ].map((c, i) => (
+    <div
+      key={i}
+      className={`
+        w-40 h-24 rounded-lg p-3 flex flex-col items-center justify-center
+        transition-colors duration-300
+        ${c.flipped
+          ? 'bg-green-100 border border-green-200'
+          : 'bg-white border border-blue-200'}
+      `}
+    >
+      {c.flipped ? (
         <>
-            {timerActiveRef.current && <p>New Word in {newWordTimer}</p>}
-
-            <div className="cards">
-                <div className={`card ${flipped1 ? "flipped" : ""}`}>
-                    <div className="front">
-                        <p>{clue1}</p>
-                    </div>
-                    <div className="back">
-                        <p>{answer1}</p>
-                    </div>
-                </div>
-                <div className={`card ${flipped2 ? "flipped" : ""}`}>
-                    <div className="front">
-                        <p>{clue2}</p>
-                    </div>
-                    <div className="back">
-                        <p>{answer2}</p>
-                    </div>
-                </div>
-            </div>
-
-            <input
-                    type="text"
-                    value={field}
-                    className="clue-input"
-                    onChange={(e) => setField(e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(e)}
-                    placeholder="Field: Type and press Enter"
-            />
-
-            <p className="clue-3-txt">Joined Word: {jwclue}</p>
-            <p className="answer">Answer display</p>
+          <p className="text-green-900 font-semibold mb-1">{c.back}</p>
+          <span className="text-2xl">🎉</span>
         </>
-    )
+      ) : (
+        <p className="text-blue-800">{c.front}</p>
+      )}
+    </div>
+  ))}
+</div>
+
+
+
+
+        {/* Answer Input */}
+        <input
+        type="text"
+        value={field}
+        onChange={(e) => setField(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder="Type answer and press Enter"
+        className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+        />
+
+        {/* Joined Word Display */}
+        <p className="text-blue-900 font-medium">Joined Word: <span className="font-semibold">{jwclue}</span></p>
+    </div>
+    );
+
 }
