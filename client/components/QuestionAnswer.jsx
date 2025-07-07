@@ -83,7 +83,7 @@ export default function QuestionAnswer(props){
                         timerActiveRef.current = false; // Use ref to track timer state
 
                         // setTimerActive(false); // Stop the timer
-                        // props.socket.emit("start_game", gameParams.roomId, gameParams.numOfWords, gameParams.timePerQuestion, true); // Emit the start_game event
+                        props.socket.emit("start_game", gameParams.roomId, gameParams.numOfWords, gameParams.timePerQuestion, true); // Emit the start_game event
                     }
                 }, 1000);
             }

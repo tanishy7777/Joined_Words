@@ -8,6 +8,7 @@ export default function ConfigOptions(props) {
 
     const startGame = (e) => {
         e.preventDefault();
+        console.log('Start game clicked');
         props.socket.emit('start_game', props.roomId, false);
     };
 

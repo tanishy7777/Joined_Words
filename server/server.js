@@ -1,3 +1,35 @@
+// import { createServer } from 'node:http';
+// import { Server } from 'socket.io';
+// import app from './app.js';
+// import setupSocketHandlers from './sockets/game.js';
+
+// const PORT = process.env.PORT || 3000;
+// const server = createServer(app);
+
+// const io = new Server(server, {
+//   cors: {
+//     origin: "http://localhost:5173",
+//     methods: ["GET", "POST"],
+//     credentials: true,
+//   },
+// });
+
+// io.use(async (socket, next) => {
+//   const { uid, nickname } = socket.handshake.auth;
+//   if (!uid || !nickname) {
+//     return next(new Error('Authentication required'));
+//   }
+//   socket.data.user = { uid, nickname };
+//   next();
+// });
+
+// setupSocketHandlers(io);
+
+// server.listen(PORT, '0.0.0.0', () => {
+//   console.log(`server running at http://localhost:${PORT}`);
+// });
+
+
 import express from 'express';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
@@ -135,18 +167,6 @@ setInterval(async () => {
 }, 10 * 60 * 1000); // Every 10 minutes
 
 
-// Helper: Notify all friends of a user's status change
-async function notifyFriendsStatusUpdate(uid) {
-  const friendUids = await redisClient.smembers(`user_friends:${uid}`);
-  for (const friendUid of friendUids) {
-    // Find if the friend is online
-    for (const [id, s] of io.sockets.sockets) {
-      if (s.data.user?.uid === friendUid) {
-        io.to(id).emit('friends_status_update');
-      }
-    }
-  }
-}
 
 const RECONNECTION_GRACE_PERIOD = 5000; // 5 seconds
 const playerReconnectionTimers = new Map(); // Track reconnection timers
@@ -173,7 +193,6 @@ io.on('connection',  (socket) => {
           return callback({ success: false, reason: 'NOT_AUTHENTICATED' });
         }
 
-        await notifyFriendsStatusUpdate(uid);
 
         let roomId;
         do {
@@ -216,12 +235,10 @@ io.on('connection',  (socket) => {
 
     // FIXED: Join random room handler
     socket.on('join_random_room', async (callback) => {
-        const { uid, nickname } = socket.data.user;                // ⬅️ CHANGED
+        const { uid, nickname } = socket.data.user;
         if (!uid) {
           return callback({ success: false, reason: 'NOT_AUTHENTICATED' });
         }
-
-        await notifyFriendsStatusUpdate(uid);
 
         const publicRoomIds = await redisClient.smembers('public_rooms');
         const availableRooms = [];
@@ -262,7 +279,6 @@ io.on('connection',  (socket) => {
       const { uid, nickname } = socket.data.user;
       if (!uid) return callback({ success: false, reason: 'NOT_AUTHENTICATED' });
 
-      await notifyFriendsStatusUpdate(uid);
 
       const currentState = await GameStateManager.getRoom(roomId);
       if (!currentState) return callback({ success: false, reason: 'ROOM_NOT_FOUND' });
@@ -279,7 +295,6 @@ io.on('connection',  (socket) => {
         currentState.socketMap[uid] = socket.id;
         await GameStateManager.updateRoom(roomId, currentState);
         socket.join(roomId);
-        sendSystemMessage(roomId, `${nickname} reconnected`);
         io.to(roomId).emit('update_leaderboard', currentState.players);
         return callback?.({ success: true, isReconnection: true });
       }
@@ -303,7 +318,6 @@ io.on('connection',  (socket) => {
       currentState.socketMap[uid] = socket.id;
       await GameStateManager.updateRoom(roomId, currentState);
       socket.join(roomId);
-      sendSystemMessage(roomId, `${nickname} joined the game`);
       io.to(roomId).emit('update_leaderboard', currentState.players);
       callback?.({ success: true });
     });
@@ -482,297 +496,9 @@ io.on('connection',  (socket) => {
     });
 
 
-   // Friend system handlers
-  socket.on('send_friend_request', async (data, callback) => {
-    const { uid, nickname } = socket.data.user; // ⬅️ Use socket.data.user for auth
-    if (!uid) { return callback({ success: false, reason: 'NOT_AUTHENTICATED' }); }
-    try {
-      const { targetUserUid } = data;
-      const requestId = `${uid}_${targetUserUid}_${Date.now()}`; // ⬅️ Use uid for request ID
-      await redisClient.setEx(`friend_request:${requestId}`, 3600, JSON.stringify({
-        id: requestId, senderUid: uid, senderNickname: nickname, targetUserUid, status: 'pending', createdAt: new Date()
-      }));
-      await redisClient.sadd(`user_sent_requests:${uid}`, requestId);
-      await redisClient.sadd(`user_received_requests:${targetUserUid}`, requestId);
-      let targetSocketId = null;
-      for (const [id, s] of io.sockets.sockets) { // ⬅️ Find target socket by UID
-        if (s.data.user?.uid === targetUserUid) { targetSocketId = id; break; }
-      }
-      if (targetSocketId) {
-        io.to(targetSocketId).emit('friend_request_received', { id: requestId, senderUid: uid, senderNickname: nickname });
-      }
-      callback({ success: true });
-    } catch (error) {
-      console.error('Error sending friend request:', error);
-      callback({ success: false, reason: 'SERVER_ERROR' });
-    }
-  });
-
-  socket.on('respond_friend_request', async (data, callback) => {
-    const { uid } = socket.data.user; // ⬅️ Use socket.data.user for auth
-    if (!uid) { return callback({ success: false, reason: 'NOT_AUTHENTICATED' }); }
-    try {
-      const { requestId, response } = data;
-      const requestData = await redisClient.get(`friend_request:${requestId}`);
-      if (!requestData) { callback({ success: false, reason: 'REQUEST_NOT_FOUND' }); return; }
-      const request = JSON.parse(requestData);
-      if (request.targetUserUid !== uid) { callback({ success: false, reason: 'UNAUTHORIZED' }); return; }
-      if (response === 'accepted') {
-        await redisClient.sadd(`user_friends:${request.senderUid}`, uid);
-        await redisClient.sadd(`user_friends:${uid}`, request.senderUid);
-      }
-      await redisClient.del(`friend_request:${requestId}`);
-      await redisClient.srem(`user_sent_requests:${request.senderUid}`, requestId);
-      await redisClient.srem(`user_received_requests:${uid}`, requestId);
-      callback({ success: true });
-    } catch (error) {
-      console.error('Error responding to friend request:', error);
-      callback({ success: false, reason: 'SERVER_ERROR' });
-    }
-  });
-
-  
-  const firestore = getFirestore();
-  // Enhanced get_friends handler with game status
-  socket.on('get_friends', async (callback) => {
-    const { uid } = socket.data.user;
-    if (!uid) return callback([]);
-
-    try {
-      const friendUids = await redisClient.smembers(`user_friends:${uid}`);
-      const friends = [];
-      
-      for (const friendUid of friendUids) {
-        let isOnline = false;
-        let nickname = null;
-        let gameStatus = 'offline'; // offline, online, in_game
-        let currentRoom = null;
-        
-        // Check if friend is online
-        for (const [id, s] of io.sockets.sockets) {
-          if (s.data.user?.uid === friendUid) {
-            isOnline = true;
-            nickname = s.data.user.nickname;
-            
-            // Check if friend is in a game room
-            const friendRooms = Array.from(s.rooms).filter(room => room !== s.id);
-            if (friendRooms.length > 0) {
-              gameStatus = 'in_game';
-              currentRoom = friendRooms[0];
-            } else {
-              gameStatus = 'online';
-            }
-            break;
-          }
-        }
-        
-        if (!isOnline) {
-          // Fetch nickname from Firestore for offline friends
-          const userDoc = await firestore.doc(`users/${friendUid}`).get();
-          nickname = userDoc.exists ? userDoc.data().nickname : 'Unknown';
-          gameStatus = 'offline';
-        }
-        
-        friends.push({ 
-          uid: friendUid, 
-          nickname, 
-          isOnline, 
-          gameStatus,
-          currentRoom 
-        });
-      }
-      
-      callback(friends);
-    } catch (error) {
-      console.error('Error getting friends:', error);
-      callback([]);
-    }
-  });
-
-  socket.on('get_friend_requests', async (callback) => {
-    const { uid } = socket.data.user; // ⬅️ Use socket.data.user for auth
-    if (!uid) return;
-    try {
-      const requestIds = await redisClient.smembers(`user_received_requests:${uid}`);
-      const requests = [];
-      for (const requestId of requestIds) {
-        const requestData = await redisClient.get(`friend_request:${requestId}`);
-        if (requestData) { requests.push(JSON.parse(requestData)); }
-      }
-      callback(requests);
-    } catch (error) {
-      console.error('Error getting friend requests:', error);
-      callback([]);
-    }
-  });
-
-  // Add to server.js - Enhanced invite system
-  socket.on('invite_friend_to_game', async (data, callback) => {
-  const { uid, nickname } = socket.data.user;
-  if (!uid) { 
-    callback({ success: false, reason: 'NOT_AUTHENTICATED' }); 
-    return; 
-  }
-
-  try {
-    const { friendUid } = data;
-    
-    // Check if sender is in a game room
-    const senderRooms = Array.from(socket.rooms).filter(room => room !== socket.id);
-    if (senderRooms.length === 0) {
-      callback({ success: false, reason: 'NOT_IN_GAME' });
-      return;
-    }
-    
-    const currentRoomId = senderRooms[0];
-    const gameState = await GameStateManager.getRoom(currentRoomId);
-    
-    if (!gameState) {
-      callback({ success: false, reason: 'INVALID_ROOM' });
-      return;
-    }
-
-    // Find target user's socket
-    let targetSocketId = null;
-    for (const [id, s] of io.sockets.sockets) {
-      if (s.data.user?.uid === friendUid) { 
-        targetSocketId = id; 
-        break; 
-      }
-    }
-
-    if (targetSocketId) {
-      const invitationId = `${uid}_${friendUid}_${Date.now()}`;
-      
-      // Store invitation temporarily
-      await redisClient.setEx(
-        `game_invitation:${invitationId}`, 
-        300, // 5 minutes expiry
-        JSON.stringify({
-          invitationId,
-          senderUid: uid,
-          senderNickname: nickname,
-          targetUid: friendUid,
-          roomId: currentRoomId,
-          createdAt: new Date()
-        })
-      );
-
-      console.log('Sending invite to socket:', targetSocketId); 
-      io.to(targetSocketId).emit('friend_invitation_received', {
-        invitationId,
-        senderUid: uid,
-        senderNickname: nickname,
-        roomId: currentRoomId
-      });
-      
-      callback({ success: true });
-    } else {
-      callback({ success: false, reason: 'FRIEND_OFFLINE' });
-    }
-  } catch (error) {
-    console.error('Error inviting friend:', error);
-    callback({ success: false, reason: 'SERVER_ERROR' });
-  }
-});
-
-// Handle invitation acceptance
-socket.on('accept_game_invitation', async (data, callback) => {
-  console.log('Accepting game invitation:', data);
-  const { uid, nickname } = socket.data.user;
-  if (!uid) {
-    callback({ success: false, reason: 'NOT_AUTHENTICATED' });
-    return;
-  }
-
-  try {
-    const { invitationId } = data;
-    
-    // Get invitation details
-    const invitationData = await redisClient.get(`game_invitation:${invitationId}`);
-    if (!invitationData) {
-      callback({ success: false, reason: 'INVITATION_EXPIRED' });
-      return;
-    }
-
-    const invitation = JSON.parse(invitationData);
-    
-    if (invitation.targetUid !== uid) {
-      callback({ success: false, reason: 'UNAUTHORIZED' });
-      return;
-    }
-
-    // Check if target is currently in another room
-    const currentRooms = Array.from(socket.rooms).filter(room => room !== socket.id);
-    
-    if (currentRooms.length > 0) {
-      // Leave current room and clean up
-      for (const roomId of currentRooms) {
-        await cleanupPlayerFromRoom(socket, roomId, uid);
-      }
-    }
-
-    // Join the invited room
-    const targetRoomId = invitation.roomId;
-    const targetGameState = await GameStateManager.getRoom(targetRoomId);
-    
-    if (!targetGameState) {
-      callback({ success: false, reason: 'ROOM_NO_LONGER_EXISTS' });
-      await redisClient.del(`game_invitation:${invitationId}`);
-      return;
-    }
-
-    // Add player to new room
-    targetGameState.players[uid] = {
-      playerScore: 0,
-      nickname: nickname,
-      socketId: socket.id
-    };
-    targetGameState.score[uid] = 100;
-    targetGameState.cluesAnswered[uid] = [false, false];
-    targetGameState.socketMap[uid] = socket.id;
-
-    await GameStateManager.updateRoom(targetRoomId, targetGameState);
-    socket.join(targetRoomId);
-    
-    // Update all clients in the room
-    io.to(targetRoomId).emit('update_leaderboard', targetGameState.players);
-    io.to(targetRoomId).emit('player_joined', { uid, nickname });
-
-    // Clean up invitation
-    await redisClient.del(`game_invitation:${invitationId}`);
-    
-    callback({ success: true, roomId: targetRoomId });
-  } catch (error) {
-    console.error('Error accepting invitation:', error);
-    callback({ success: false, reason: 'SERVER_ERROR' });
-  }
-});
-
-// Helper function to clean up player from room
-async function cleanupPlayerFromRoom(socket, roomId, uid) {
-  await notifyFriendsStatusUpdate(uid);
-  const gameState = await GameStateManager.getRoom(roomId);
-  if (gameState && gameState.players[uid]) {
-    delete gameState.players[uid];
-    delete gameState.score[uid];
-    delete gameState.cluesAnswered[uid];
-    delete gameState.socketMap[uid];
-    
-    await GameStateManager.updateRoom(roomId, gameState);
-    socket.leave(roomId);
-    
-    // Notify remaining players
-    io.to(roomId).emit('update_leaderboard', gameState.players);
-    io.to(roomId).emit('player_left', { uid });
-  }
-}
-
 // MODIFIED: Enhanced cleanup function with reconnection grace period
 async function cleanupPlayerDisconnect(socket, roomId, uid, nickname, isReload = false) {
-  try {
-    await notifyFriendsStatusUpdate(uid);
-    
+  try {    
     const gameState = await GameStateManager.getRoom(roomId);
     if (!gameState) {
       console.log(`Room ${roomId} not found during cleanup`);
@@ -804,7 +530,6 @@ async function cleanupPlayerDisconnect(socket, roomId, uid, nickname, isReload =
       
       playerReconnectionTimers.set(timerKey, timer);
       socket.leave(roomId);
-      sendSystemMessage(roomId, `${nickname} disconnected (may reconnect...)`);
       return;
     }
     
@@ -863,7 +588,6 @@ async function actuallyRemovePlayer(roomId, uid, nickname) {
       
       const newAdminSocketId = gameState.socketMap[newAdmin];
       if (newAdminSocketId) {
-        sendSystemMessage(roomId, `${gameState.players[newAdmin]?.nickname || 'Someone'} is now the admin`);
         io.to(newAdminSocketId).emit('became_admin', {
           uid: newAdmin,
           nickname: gameState.players[newAdmin]?.nickname || "Unknown"
@@ -880,7 +604,6 @@ async function actuallyRemovePlayer(roomId, uid, nickname) {
     
     // Notify remaining players
     io.to(roomId).emit('update_leaderboard', gameState.players);
-    sendSystemMessage(roomId, `${nickname} left the game`);
     io.to(roomId).emit('player_disconnected', {
       uid,
       nickname,
@@ -889,32 +612,7 @@ async function actuallyRemovePlayer(roomId, uid, nickname) {
   }
 }
 
-// ──────────────────────────────────────────────────────────────
-// CHAT: user sends a message
-socket.on('chat_message', (data, callback) => {
-  // data = { roomId, text }
-  const { uid, nickname } = socket.data.user || {};
-  if (!uid || !data?.roomId || !data?.text?.trim()) return;
 
-  const payload = {
-    type: 'user',               // user | system
-    uid,
-    nickname,
-    text: data.text.trim(),
-    ts: Date.now()
-  };
-  io.to(data.roomId).emit('chat_message', payload);      // broadcast
-  callback?.({ ok: true });
-});
-
-// helper to emit system chat
-function sendSystemMessage(roomId, text) {               // ⬅️ ADDED
-  io.to(roomId).emit('chat_message', {
-    type: 'system',
-    text,
-    ts: Date.now()
-  });
-}
 
 
 
@@ -938,7 +636,6 @@ socket.on('disconnecting', async (reason) => {
       await cleanupPlayerDisconnect(socket, roomId, uid, nickname, isReload);
     }
 
-    await notifyFriendsStatusUpdate(uid);
 });
 
 // Keep this for logging (optional)

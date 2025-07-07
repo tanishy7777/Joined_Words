@@ -7,8 +7,6 @@ import { socket, updateSocketAuth } from './socket';
 import Game from './components/Game';
 import WaitScreen from './components/WaitScreen';
 import NicknamePrompt from './components/NicknamePrompt';
-import FriendSystem from './components/FriendSystem';
-import ChatWindow from './components/ChatWindow';
 
 
 function AppContent() {
@@ -16,11 +14,8 @@ function AppContent() {
   const [roomId, setRoomId] = useState(null);
   const [isRoomAdmin, setIsRoomAdmin] = useState(false);
   const [gameStarted, setGameStarted] = useState(false);
-  const [friendsOpen, setFriendsOpen] = useState(false);
   const [leaderboardData, setLeaderboardData] = useState({});
   
-  const hasJoinedRef = useRef(false); // on reload this is set to false always
-
   // (S->C) Update Leaderboard with Data, when server emits 'update_leaderboard'
   useEffect(() => {
     const handleUpdate = (players) => setLeaderboardData(players);
@@ -58,15 +53,11 @@ function AppContent() {
     if (user) handleAuthChange();
   }, [user]);
 
-
-
   useEffect(() => {
-    if (!user || !roomId || hasJoinedRef.current) return;
+    if (!user || !roomId) return;
 
     socket.emit('join_room', roomId, (res) => {
       if (res.success) {
-        hasJoinedRef.current = true;
-
         // Fetch room info (like isAdmin) after successful join
         socket.emit('get_room_info', roomId, ({ isAdmin }) => {
           setIsRoomAdmin(!!isAdmin);
@@ -82,7 +73,6 @@ function AppContent() {
     socket.emit('create_room', (response) => {
       if (response.success) {
         setRoomId(response.roomId);
-        hasJoinedRef.current = true;
         navigate(`/room/${response.roomId}`);
       } else {
         alert('Failed to create room');
@@ -95,7 +85,6 @@ function AppContent() {
     socket.emit('join_room', roomId, (response) => {
       if (response.success) {
         setRoomId(roomId);
-        hasJoinedRef.current = true;
         navigate(`/room/${roomId}`);
         socket.emit('get_room_info', roomId, ({ isAdmin, gameStarted }) => {
           setIsRoomAdmin(!!isAdmin);
@@ -129,13 +118,12 @@ function AppContent() {
     const navigate = useNavigate();
 
     useEffect(() => {
-      if (!roomCode || !user || hasJoinedRef.current) return;
+      if (!roomCode || !user) return;
 
       const joinRoomFromURL = () => {
         socket.emit('join_room', roomCode, (res) => {
           if (res.success) {
             setRoomId(roomCode);
-            hasJoinedRef.current = true;
             socket.emit('get_room_info', roomCode, ({ isAdmin, gameStarted }) => {
               setIsRoomAdmin(!!isAdmin);
               setGameStarted(!!gameStarted);
@@ -222,19 +210,12 @@ function AppContent() {
 
   return (
     <Router>
-      <header className="app-header">
-        <button onClick={() => setFriendsOpen(true)}>Friends</button>
-      </header>
-
-      <FriendSystem isOpen={friendsOpen} onClose={() => setFriendsOpen(false)} />
-
       <div className="main-content">
         <Routes>
           <Route path="/" element={<HandleRoom />} />
           <Route path="/room/:roomCode" element={
             <>
               <RoomHandler />
-              {roomId && <ChatWindow roomId={roomId} className={gameStarted ? 'game-chat' : 'wait-chat'} />}
             </>
           }/>
         </Routes>

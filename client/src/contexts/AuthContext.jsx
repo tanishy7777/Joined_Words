@@ -39,11 +39,6 @@ export const AuthProvider = ({ children }) => {
         displayName: nickname,
         createdAt: new Date(),
         isAnonymous: true,
-        friends: [],
-        friendRequests: {
-          sent: [],
-          received: []
-        },
         gamesPlayed: 0,
         totalScore: 0
       });
@@ -73,11 +68,6 @@ export const AuthProvider = ({ children }) => {
           photoURL: user.photoURL,
           createdAt: new Date(),
           isAnonymous: false,
-          friends: [],
-          friendRequests: {
-            sent: [],
-            received: []
-          },
           gamesPlayed: 0,
           totalScore: 0
         });

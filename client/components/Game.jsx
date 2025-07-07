@@ -60,7 +60,6 @@ export default function Game(props) {
 
 
             <QuestionAnswer socket={socket} roomId={props.roomId}/>
-
             <Leaderboard socket={socket} roomId={props.roomId} currentUserUid={user?.uid}  />
             
 
