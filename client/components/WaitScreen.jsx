@@ -25,18 +25,6 @@ export default function WaitScreen(props) {
         {players && Object.entries(players).map(([uid, p]) => (
           <div key={uid} className="player-row">
             <span>{p.nickname}</span>
-            {uid !== user.uid && (                      
-              <button
-                onClick={() =>
-                  socket.emit('send_friend_request', { targetUserUid: uid }, (res) =>
-                    alert(res.success ? 'Request sent' : res.reason)
-                  )
-                }
-                title="Add friend"
-              >
-                🤝
-              </button>
-            )}
           </div>
         ))}
       </div>

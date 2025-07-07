@@ -132,8 +132,20 @@ class GameStateManager {
         return [];
       }
     }
-
 }
+
+(async () => {
+  try {
+    const allRoomIds = await GameStateManager.getAllRooms();
+    for (const roomId of allRoomIds) {
+      await GameStateManager.deleteRoom(roomId);
+    }
+    console.log(`✅ Cleared ${allRoomIds.length} game rooms from Redis on startup`);
+  } catch (error) {
+    console.error('Failed to clear rooms on startup:', error);
+  }
+})();
+
 
 // Periodic cleanup of public_rooms set (remove non-existent rooms)
 // CHANGE: Interval now every 10 minutes (was 100 minutes)
