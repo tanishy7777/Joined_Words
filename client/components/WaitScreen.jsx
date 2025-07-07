@@ -9,7 +9,8 @@ export default function WaitScreen(props) {
   const { user } = useAuth();
 
   const copyRoomId = () => {
-    navigator.clipboard.writeText(roomId);
+    let copyText = `http://localhost:5173/room/${roomId}`;
+    navigator.clipboard.writeText(copyText);
     // TODO: fire a toast/tooltip to confirm copy
   };
 

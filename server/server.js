@@ -29,8 +29,8 @@ if (process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
     Buffer.from(process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64, 'base64').toString('utf-8')
   );
 } else {
-  // serviceAccount = require('./jwmultiplayer-firebase-adminsdk-2952g-1bfce059ed.json');
-  serviceAccount = require('./jw-daily-firebase-adminsdk.json');
+  serviceAccount = require('./jwmultiplayer-firebase-adminsdk-2952g-1bfce059ed.json');
+  // serviceAccount = require('./jw-daily-firebase-adminsdk.json');
 }
 
 // Initialize Firebase Admin
@@ -418,27 +418,31 @@ io.on('connection',  async (socket) => {
             if (countdownTime <= 0) {
               clearInterval(gameInterval);
               const currentState = await GameStateManager.getRoom(roomId);
-              console.log(currentState.players);
-              io.to(roomId).emit('update_leaderboard', currentState.players);
+              try {
+                console.log(currentState.players);
+                io.to(roomId).emit('update_leaderboard', currentState.players);
 
-              if (numOfWords > 0) {
-                // Reset scores for next word
-                currentState.cluesAnswered[uid] = [false, false];
-                for (const playerId of Object.keys(currentState.players)) {
-                  currentState.score[playerId] = 100;
-                  const playerSocketId = currentState.socketMap[playerId];
-                  if (playerSocketId) {
-                    io.to(playerSocketId).emit('clear_field_new_word');
+                if (numOfWords > 0) {
+                  // Reset scores for next word
+                  currentState.cluesAnswered[uid] = [false, false];
+                  for (const playerId of Object.keys(currentState.players)) {
+                    currentState.score[playerId] = 100;
+                    const playerSocketId = currentState.socketMap[playerId];
+                    if (playerSocketId) {
+                      io.to(playerSocketId).emit('clear_field_new_word');
+                    }
                   }
+                  await GameStateManager.updateRoom(roomId, currentState);
+                  const adminSocketId = currentState.socketMap[currentState.admin];
+                  if (adminSocketId) {
+                    io.to(adminSocketId).emit("game_restart", { roomId, numOfWords, timePerQuestion });
+                  }
+                  socket.broadcast.to(roomId).emit("next_word_in");
+                } else {
+                  io.to(roomId).emit('end_game');
                 }
-                await GameStateManager.updateRoom(roomId, currentState);
-                const adminSocketId = currentState.socketMap[currentState.admin];
-                if (adminSocketId) {
-                  io.to(adminSocketId).emit("game_restart", { roomId, numOfWords, timePerQuestion });
-                }
-                socket.broadcast.to(roomId).emit("next_word_in");
-              } else {
-                io.to(roomId).emit('end_game');
+              } catch (error) {
+                console.error('Caught:', error);
               }
             }
 

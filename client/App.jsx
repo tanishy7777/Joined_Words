@@ -53,19 +53,6 @@ function AppContent() {
     if (user) handleAuthChange();
   }, [user]);
 
-  // useEffect(() => {
-  //   if (!user || !roomId) return;
-
-  //   socket.emit('join_room', roomId, (res) => {
-  //     if (res.success) {
-  //       // Fetch room info (like isAdmin) after successful join
-  //       socket.emit('get_room_info', roomId, ({ isAdmin }) => {
-  //         setIsRoomAdmin(!!isAdmin);
-  //       });
-  //     }
-  //   });
-  // }, [user, roomId]);
-
   // Fixed room creation
   const createRoom = (navigate) => {
     if (!user) return;
@@ -184,23 +171,6 @@ function AppContent() {
   function HandleRoom() {
     const navigate = useNavigate();
     return (
-      // <div className='room-div'>
-      //   <button id='join-random-btn' onClick={() => joinRandomRoom(navigate)}>
-      //     Join Random Room
-      //   </button>
-        
-      //   <form onSubmit={(e) => {
-      //     e.preventDefault();
-      //     joinRoom(navigate, new FormData(e.target));
-      //   }}>
-      //     <input id='room-id-input' type="text" name="roomId" placeholder="Enter Room ID"/>
-      //     <button id="join-room-btn">Join Room</button>
-      //   </form>
-        
-      //   <button id='create-room-btn' onClick={() => createRoom(navigate)}>
-      //     Create Room
-      //   </button>
-      // </div>
       <div className="min-h-screen bg-blue-50 flex items-center justify-center p-4">
       <div className="bg-white max-w-md w-full rounded-2xl shadow-lg p-6 space-y-6">
         {/* Join Random */}
