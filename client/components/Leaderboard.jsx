@@ -6,6 +6,11 @@ export default function Leaderboard({ socket, roomId, currentUserUid }) {
   useEffect(() => {
     socket.on('update_leaderboard', (players) => {
       setLeaderboard(players);
+      console.log(
+        "%c[S->C] Updated leaderboard data:",
+        "color: green; font-weight: bold;",
+        players
+      );
     });
     socket.emit('get_leaderboard', roomId);
 

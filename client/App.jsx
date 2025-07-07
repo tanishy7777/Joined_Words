@@ -80,37 +80,44 @@ function AppContent() {
     });
   };
 
-  // Fixed room joining
-  const joinRoomCommon = (navigate, roomId) => {
-    socket.emit('join_room', roomId, (response) => {
-      if (response.success) {
-        setRoomId(roomId);
-        navigate(`/room/${roomId}`);
-        socket.emit('get_room_info', roomId, ({ isAdmin, gameStarted }) => {
-          setIsRoomAdmin(!!isAdmin);
-          setGameStarted(!!gameStarted);
-        });
-      } else {
-        let errorMessage = "Join failed";
-        if (response.reason === 'ROOM_NOT_FOUND') errorMessage = "Room not found!";
-        else if (response.reason === 'PRIVATE_GAME') errorMessage = "This game is private";
-        alert(errorMessage);
-      }
-    });
-  };
-
   const joinRandomRoom = (navigate) => {
     if (!user) return;
     socket.emit('join_random_room', (response) => {
-      if (response.success) joinRoomCommon(navigate, response.roomId);
-      else alert('No public rooms available. Please create a new room.');
+      if (response.success) {
+        setRoomId(response.roomId);
+        navigate(`/room/${response.roomId}`);
+        socket.emit('get_room_info', response.roomId, ({ isAdmin, gameStarted }) => {
+          setIsRoomAdmin(!!isAdmin);
+          setGameStarted(!!gameStarted);
+        });
+        console.log(
+          "%c[C->S] Joined random room with ID: {response.roomId}",
+          "color: green; font-weight: bold;", response.roomId
+        );
+      } else alert('No public rooms available. Please create a new room.');
     });
   };
 
   const joinRoom = (navigate, formData) => {
     if (!user) return;
-    const room = formData.get("roomId");
-    if (room) joinRoomCommon(navigate, room);
+    const roomField = formData.get("roomId");
+    if (roomField) {
+      socket.emit('join_room', roomField, (response) => {
+        if (response.success) {
+          setRoomId(roomField);
+          navigate(`/room/${roomField}`);
+          socket.emit('get_room_info', roomField, ({ isAdmin, gameStarted }) => {
+            setIsRoomAdmin(!!isAdmin);
+            setGameStarted(!!gameStarted);
+          });
+        } else {
+          let errorMessage = "Join failed";
+          if (response.reason === 'ROOM_NOT_FOUND') errorMessage = "Room not found!";
+          else if (response.reason === 'PRIVATE_GAME') errorMessage = "This game is private";
+          alert(errorMessage);
+        }
+      });
+    }
   };
 
   function RoomHandler() {

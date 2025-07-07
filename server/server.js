@@ -1,35 +1,3 @@
-// import { createServer } from 'node:http';
-// import { Server } from 'socket.io';
-// import app from './app.js';
-// import setupSocketHandlers from './sockets/game.js';
-
-// const PORT = process.env.PORT || 3000;
-// const server = createServer(app);
-
-// const io = new Server(server, {
-//   cors: {
-//     origin: "http://localhost:5173",
-//     methods: ["GET", "POST"],
-//     credentials: true,
-//   },
-// });
-
-// io.use(async (socket, next) => {
-//   const { uid, nickname } = socket.handshake.auth;
-//   if (!uid || !nickname) {
-//     return next(new Error('Authentication required'));
-//   }
-//   socket.data.user = { uid, nickname };
-//   next();
-// });
-
-// setupSocketHandlers(io);
-
-// server.listen(PORT, '0.0.0.0', () => {
-//   console.log(`server running at http://localhost:${PORT}`);
-// });
-
-
 import express from 'express';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
@@ -153,6 +121,18 @@ class GameStateManager {
           console.error('Redis delete failed:', error);
         }
     }
+
+    static async getAllRooms() {
+      try {
+        const keys = await redisClient.keys('gamestate:*');
+        const roomIds = keys.map(key => key.replace('gamestate:', ''));
+        return roomIds;
+      } catch (error) {
+        console.error('Redis getAllRooms failed:', error);
+        return [];
+      }
+    }
+
 }
 
 // Periodic cleanup of public_rooms set (remove non-existent rooms)
@@ -172,8 +152,9 @@ const RECONNECTION_GRACE_PERIOD = 5000; // 5 seconds
 const playerReconnectionTimers = new Map(); // Track reconnection timers
 
 
-io.on('connection',  (socket) => {
-  console.log('New client connected');     
+io.on('connection',  async (socket) => {
+  const gameState = await GameStateManager.getAllRooms();
+  console.log('New client connected', gameState);     
 
     // Set up the socket data with user info
     socket.on('get_room_info', async (roomId, callback) => {
@@ -188,11 +169,10 @@ io.on('connection',  (socket) => {
     });
   
     socket.on('create_room', async (callback) => {
-        const { uid, nickname } = socket.data.user;              // ⬅️ CHANGED
+        const { uid, nickname } = socket.data.user;         
         if (!uid) {
           return callback({ success: false, reason: 'NOT_AUTHENTICATED' });
         }
-
 
         let roomId;
         do {
@@ -380,6 +360,7 @@ io.on('connection',  (socket) => {
         gameState.questionIndex = gameState.totalWords - numOfWords;
         numOfWords--;
         gameState.numOfWords = numOfWords;
+        await GameStateManager.updateRoom(roomId, gameState);
         let totalTime = 16;
         let countdownTime = totalTime;
         let timePenalty = 10;
@@ -403,8 +384,8 @@ io.on('connection',  (socket) => {
               
               for (const playerId of Object.keys(currentState.players)) {
                 const [clue1, clue2] = currentState.cluesAnswered[playerId] || [];
-                
-                if (!(clue1 && clue2)) {
+
+                if (!clue1 || !clue2) {
                   currentState.score[playerId] -= timePenalty;
                   needsUpdate = true;
                   
@@ -416,35 +397,28 @@ io.on('connection',  (socket) => {
               }
               if (needsUpdate) {
                 await GameStateManager.updateRoom(roomId, {
-                score: currentState.score
+                  score: currentState.score
                 });
               }
             }
             if (countdownTime <= 0) {
               clearInterval(gameInterval);
-
-              // Only add score if answered correctly
-              for (const playerId of Object.keys(gameState.players)) {
-                if (gameState.players[playerId].answeredCorrectly) {
-                  gameState.players[playerId].playerScore += gameState.score[playerId];
-                }
-                gameState.players[playerId].answeredCorrectly = false;
-              }
-
-              await GameStateManager.updateRoom(roomId, gameState);
-              io.to(roomId).emit('update_leaderboard', gameState.players);
+              const currentState = await GameStateManager.getRoom(roomId);
+              console.log(currentState.players);
+              io.to(roomId).emit('update_leaderboard', currentState.players);
 
               if (numOfWords > 0) {
                 // Reset scores for next word
-                for (const playerId of Object.keys(gameState.players)) {
-                  gameState.score[playerId] = 100;
-                  const playerSocketId = gameState.socketMap[playerId];
+                currentState.cluesAnswered[uid] = [false, false];
+                for (const playerId of Object.keys(currentState.players)) {
+                  currentState.score[playerId] = 100;
+                  const playerSocketId = currentState.socketMap[playerId];
                   if (playerSocketId) {
                     io.to(playerSocketId).emit('clear_field_new_word');
                   }
                 }
-                await GameStateManager.updateRoom(roomId, gameState);
-                const adminSocketId = gameState.socketMap[gameState.admin];
+                await GameStateManager.updateRoom(roomId, currentState);
+                const adminSocketId = currentState.socketMap[currentState.admin];
                 if (adminSocketId) {
                   io.to(adminSocketId).emit("game_restart", { roomId, numOfWords, timePerQuestion });
                 }
@@ -486,8 +460,8 @@ io.on('connection',  (socket) => {
 
       console.log(gameState.cluesAnswered[uid][0], gameState.cluesAnswered[uid][1]);
       if (gameState.cluesAnswered[uid][0] && gameState.cluesAnswered[uid][1]) {
-        gameState.players[uid].answeredCorrectly = true;
         gameState.players[uid].playerScore += gameState.score[uid];
+        await GameStateManager.updateRoom(roomId, gameState);
         io.to(roomId).emit('update_leaderboard', gameState.players);
         console.log(`Player ${uid} answered correctly for question index ${questionIndex}`);
       }

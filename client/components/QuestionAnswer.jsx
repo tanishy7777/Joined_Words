@@ -138,10 +138,6 @@ export default function QuestionAnswer(props){
             }
         };
 
-        // TODO: load data from database
-        // console.log(data);
-
-
     return (
         <>
             {timerActiveRef.current && <p>New Word in {newWordTimer}</p>}

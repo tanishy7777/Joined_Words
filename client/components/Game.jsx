@@ -57,12 +57,8 @@ export default function Game(props) {
             <RoomId roomId={props.roomId} />            
             <p className="time-txt">Time left: {timer}</p>
             <p className="score-txt">Score: {score}</p>
-
-
-            <QuestionAnswer socket={socket} roomId={props.roomId}/>
-            <Leaderboard socket={socket} roomId={props.roomId} currentUserUid={user?.uid}  />
-            
-
+            <QuestionAnswer socket={socket} roomId={props.roomId} />
+            <Leaderboard socket={socket} roomId={props.roomId} currentUserUid={user?.uid} />
         </div>
     )
 }
