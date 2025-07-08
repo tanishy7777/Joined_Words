@@ -171,43 +171,36 @@ io.on('connection',  async (socket) => {
   // const gameState = await GameStateManager.getAllRooms();
   // NEVER AWAIT HERE!!!!!!
   console.log('New client connected');    
-  
-  
-    
-    // In server.js
+  socket.on('request_initial_game_state', async (roomId) => {
+      console.log(`Socket ${socket.id} is requesting initial state for room ${roomId}`);
+      const { uid } = socket.data.user || {};
+      const currentState = await GameStateManager.getRoom(roomId);
 
-io.on('connection', (socket) => {
-    socket.on('request_initial_game_state', async (roomId) => {
-        console.log(`Socket ${socket.id} is requesting initial state for room ${roomId}`);
-        const { uid } = socket.data.user || {};
-        const currentState = await GameStateManager.getRoom(roomId);
+      if (!currentState || !uid || currentState.totalWords === null) {
+          console.error("Failed to provide initial state: game not running or invalid state.");
+          return;
+      }
 
-        if (!currentState || !uid || currentState.totalWords === null) {
-            console.error("Failed to provide initial state: game not running or invalid state.");
-            return;
-        }
+      // This is the SAME logic that used to be in the 'join_room' handler
+      const currentQuestionIndex = currentState.questionIndex;
+      const questionData = {
+        questionIndex: currentQuestionIndex,
+        clue1: currentState.data[currentQuestionIndex].clue1,
+        clue2: currentState.data[currentQuestionIndex].clue2,
+        jwclue: currentState.data[currentQuestionIndex].jwclue,
+      };
+      
+      const cluesAnswered = currentState.cluesAnswered[uid] || [false, false];
+      const [clue1Answered, clue2Answered] = cluesAnswered;
+      const playerSyncData = {
+        score: currentState.score[uid],
+        answer1: clue1Answered ? currentState.data[currentQuestionIndex].answer1 : null,
+        answer2: clue2Answered ? currentState.data[currentQuestionIndex].answer2 : null,
+      };
 
-        // This is the SAME logic that used to be in the 'join_room' handler
-        const currentQuestionIndex = currentState.questionIndex;
-        const questionData = {
-          questionIndex: currentQuestionIndex,
-          clue1: currentState.data[currentQuestionIndex].clue1,
-          clue2: currentState.data[currentQuestionIndex].clue2,
-          jwclue: currentState.data[currentQuestionIndex].jwclue,
-        };
-        
-        const cluesAnswered = currentState.cluesAnswered[uid] || [false, false];
-        const [clue1Answered, clue2Answered] = cluesAnswered;
-        const playerSyncData = {
-          score: currentState.score[uid],
-          answer1: clue1Answered ? currentState.data[currentQuestionIndex].answer1 : null,
-          answer2: clue2Answered ? currentState.data[currentQuestionIndex].answer2 : null,
-        };
-
-        io.to(socket.id).emit('get_question_data', questionData);
-        io.to(socket.id).emit('player_state_sync', playerSyncData);
-        io.to(socket.id).emit('get_score', currentState.score[uid]);
-      });
+      io.to(socket.id).emit('get_question_data', questionData);
+      io.to(socket.id).emit('player_state_sync', playerSyncData);
+      io.to(socket.id).emit('get_score', currentState.score[uid]);
     });
 
     // Set up the socket data with user info
