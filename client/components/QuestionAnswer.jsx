@@ -174,9 +174,6 @@ export default function QuestionAnswer(props){
   ))}
 </div>
 
-
-
-
         {/* Answer Input */}
         <input
         type="text"

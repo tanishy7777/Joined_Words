@@ -25,48 +25,6 @@ export default function NicknamePrompt() {
     }
   };
 
-  // return (
-  //   <div className="nickname-prompt">
-  //     <div className="auth-container">
-  //       <h2>Welcome to Joined Words!</h2>
-  //       <p>Choose how you'd like to sign in:</p>
-        
-  //       <div className="auth-methods">
-  //         <button 
-  //           className={`auth-method ${authMethod === 'anonymous' ? 'active' : ''}`}
-  //           onClick={() => setAuthMethod('anonymous')}
-  //         >
-  //           Play as Guest
-  //         </button>
-  //         <button 
-  //           className={`auth-method ${authMethod === 'google' ? 'active' : ''}`}
-  //           onClick={() => setAuthMethod('google')}
-  //         >
-  //           Sign in with Google
-  //         </button>
-  //       </div>
-
-  //       <form onSubmit={handleSubmit}>
-  //         {authMethod === 'anonymous' && (
-  //           <div className="nickname-input">
-  //             <input
-  //               type="text"
-  //               placeholder="Enter your nickname"
-  //               value={nickname}
-  //               onChange={(e) => setNickname(e.target.value)}
-  //               maxLength={20}
-  //               required
-  //             />
-  //           </div>
-  //         )}
-          
-  //         <button type="submit" className="start-playing-btn">
-  //           {authMethod === 'anonymous' ? 'Start Playing' : 'Continue with Google'}
-  //         </button>
-  //       </form>
-  //     </div>
-  //   </div>
-  // );
   return (
   <div className="min-h-screen bg-blue-50 flex items-center justify-center p-4">
     <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-6 space-y-6">

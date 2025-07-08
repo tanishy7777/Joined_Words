@@ -11,38 +11,31 @@ import NicknamePrompt from './components/NicknamePrompt';
 
 function AppContent() {
   const { user, loading, showNicknamePrompt } = useAuth();
-  const [roomId, setRoomId] = useState(null);
   const [isRoomAdmin, setIsRoomAdmin] = useState(false);
   const [gameStarted, setGameStarted] = useState(false);
   const [leaderboardData, setLeaderboardData] = useState({});
   
   // (S->C) Update Leaderboard with Data, when server emits 'update_leaderboard'
+  // say in waiting area and someone else joins the room
   useEffect(() => {
     const handleUpdate = (players) => setLeaderboardData(players);
     socket.on('update_leaderboard', handleUpdate);
     
     console.log(
-      "%c[S->C] Updated leaderboard data:",
+      "%c[S->C] Mounted: Listening for leaderboard data:",
       "color: green; font-weight: bold;",
       leaderboardData
     );
 
     return () => {
+      console.log(
+        "%c[S->C] Unmounted: listening for leaderboard data",
+        "color: red; font-weight: bold;"
+      );
       socket.off('update_leaderboard', handleUpdate);
     };
   }, []);
 
-  // (C->S) Fetch leaderboard data when **roomId changes**
-  useEffect(() => {
-    if (roomId) {
-      console.log(
-        "%c[C->S] Fetching leaderboard data for room ID: {roomId}",
-        "color: green; font-weight: bold;", roomId
-      );
-
-      socket.emit('get_leaderboard', roomId);
-    }
-  }, [roomId]);
 
   // Update socket auth on **user changes**
   useEffect(() => {
@@ -51,6 +44,17 @@ function AppContent() {
     };
 
     if (user) handleAuthChange();
+    console.log(
+      "%c[S->C] Mounted: Updating socket auth with user data",
+      "color: green; font-weight: bold;", user
+    );
+    
+    return () => {
+      console.log(
+        "%c[S->C] Unmounted: Updating socket auth",
+        "color: red; font-weight: bold;"
+      );
+    };
   }, [user]);
 
   // Fixed room creation
@@ -59,7 +63,7 @@ function AppContent() {
     setIsRoomAdmin(true);
     socket.emit('create_room', (response) => {
       if (response.success) {
-        setRoomId(response.roomId);
+        // setRoomId(response.roomId);
         navigate(`/room/${response.roomId}`);
       } else {
         alert('Failed to create room');
@@ -71,7 +75,6 @@ function AppContent() {
     if (!user) return;
     socket.emit('join_random_room', (response) => {
       if (response.success) {
-        setRoomId(response.roomId);
         navigate(`/room/${response.roomId}`);
         socket.emit('get_room_info', response.roomId, ({ isAdmin, gameStarted }) => {
           setIsRoomAdmin(!!isAdmin);
@@ -91,7 +94,6 @@ function AppContent() {
     if (roomField) {
       socket.emit('join_room', roomField, (response) => {
         if (response.success) {
-          setRoomId(roomField);
           navigate(`/room/${roomField}`);
           socket.emit('get_room_info', roomField, ({ isAdmin, gameStarted }) => {
             setIsRoomAdmin(!!isAdmin);
@@ -121,7 +123,7 @@ function AppContent() {
         );
         socket.emit('join_room', roomCode, (res) => {
           if (res.success) {
-            setRoomId(roomCode);
+            // setRoomId(roomCode);
             socket.emit('get_room_info', roomCode, ({ isAdmin, gameStarted }) => {
               console.log(
                 "%c[C->S] Room info fetched for room code: {roomCode}",
@@ -130,6 +132,7 @@ function AppContent() {
               setIsRoomAdmin(!!isAdmin);
               setGameStarted(!!gameStarted);
             });
+            // socket.emit('get_leaderboard', roomCode);
           } else {
             alert('Failed to join room. Redirecting to home.');
             navigate('/');
