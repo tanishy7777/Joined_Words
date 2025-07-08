@@ -37,7 +37,7 @@ function AppContent() {
   }, []);
 
 
-  // Update socket auth on **user changes**
+  // This function updates socket auth on user changes
   useEffect(() => {
     const handleAuthChange = async () => {
       await updateSocketAuth();
@@ -57,13 +57,11 @@ function AppContent() {
     };
   }, [user]);
 
-  // Fixed room creation
   const createRoom = (navigate) => {
     if (!user) return;
     setIsRoomAdmin(true);
     socket.emit('create_room', (response) => {
       if (response.success) {
-        // setRoomId(response.roomId);
         navigate(`/room/${response.roomId}`);
       } else {
         alert('Failed to create room');
@@ -116,38 +114,10 @@ function AppContent() {
     useEffect(() => {
       if (!roomCode || !user) return;
 
-      const joinRoomFromURL = () => {
-        console.log(
-          "%c[C->S] Joining room with code: {roomCode}",
-          "color: green; font-weight: bold;", roomCode
-        );
-        socket.emit('join_room', roomCode, (res) => {
-          if (res.success) {
-            // setRoomId(roomCode);
-            socket.emit('get_room_info', roomCode, ({ isAdmin, gameStarted }) => {
-              console.log(
-                "%c[C->S] Room info fetched for room code: {roomCode}",
-                "color: green; font-weight: bold;", roomCode, isAdmin, gameStarted
-              );
-              setIsRoomAdmin(!!isAdmin);
-              setGameStarted(!!gameStarted);
-            });
-            // socket.emit('get_leaderboard', roomCode);
-          } else {
-            alert('Failed to join room. Redirecting to home.');
-            navigate('/');
-          }
-        });
-      };
-
-      if (socket.connected) joinRoomFromURL();
-      else socket.once('connect', joinRoomFromURL);
-
       const handleGameStart = () => setGameStarted(true);
       socket.on('load_game_component', handleGameStart);
 
       return () => {
-        socket.off('connect', joinRoomFromURL);
         socket.off('load_game_component', handleGameStart);
       };
     }, [roomCode, user, navigate]);
@@ -176,7 +146,6 @@ function AppContent() {
     return (
       <div className="min-h-screen bg-blue-50 flex items-center justify-center p-4">
       <div className="bg-white max-w-md w-full rounded-2xl shadow-lg p-6 space-y-6">
-        {/* Join Random */}
         <button
           onClick={() => joinRandomRoom(navigate)}
           className="w-full bg-blue-800 text-white py-2 rounded-lg font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
@@ -184,7 +153,6 @@ function AppContent() {
           Join Random Room
         </button>
 
-        {/* Join by Code */}
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -206,7 +174,6 @@ function AppContent() {
           </button>
         </form>
 
-        {/* Create New */}
         <button
           onClick={() => createRoom(navigate)}
           className="w-full bg-blue-800 text-white py-2 rounded-lg font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
