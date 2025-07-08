@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { BrowserRouter as Router, Route, Routes, useNavigate, useParams } from 'react-router';
-import { ToastContainer, Bounce } from 'react-toastify';
+import { ToastContainer, Bounce, toast } from 'react-toastify';
 
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { socket, updateSocketAuth } from './socket';
@@ -11,179 +11,105 @@ import NicknamePrompt from './components/NicknamePrompt';
 import { use } from 'react';
 
 
-function AppContent() {
-  const { user, loading, showNicknamePrompt } = useAuth();
-  const [isRoomAdmin, setIsRoomAdmin] = useState(false);
-  const [gameStarted, setGameStarted] = useState(false);
-  const [leaderboardData, setLeaderboardData] = useState({});
-  const [RoomButtonPressed, setRoomButtonPressed] = useState(false);
-  
-  // (S->C) Update Leaderboard with Data, when server emits 'update_leaderboard'
-  // say in waiting area and someone else joins the room
-  useEffect(() => {
-    const handleUpdate = (players) => setLeaderboardData(players);
-    socket.on('update_leaderboard', handleUpdate);
-    
-    console.log(
-      "%c[S->C] Mounted: Listening for leaderboard data:",
-      "color: green; font-weight: bold;",
-      leaderboardData
-    );
 
-    return () => {
-      console.log(
-        "%c[S->C] Unmounted: listening for leaderboard data",
-        "color: red; font-weight: bold;"
-      );
-      socket.off('update_leaderboard', handleUpdate);
-    };
-  }, []);
-
-
-  // This function updates socket auth on user changes
-  useEffect(() => {
-    const handleAuthChange = async () => {
-      await updateSocketAuth();
-    };
-
-    if (user) handleAuthChange();
-    console.log(
-      "%c[S->C] Mounted: Updating socket auth with user data",
-      "color: green; font-weight: bold;", user
-    );
-    
-    return () => {
-      console.log(
-        "%c[S->C] Unmounted: Updating socket auth",
-        "color: red; font-weight: bold;"
-      );
-    };
-  }, [user]);
-
-  const createRoom = (navigate) => {
-    if (!user) return;
-    if (RoomButtonPressed) return;
-    setRoomButtonPressed(true);
-
-    setIsRoomAdmin(true);
-    socket.emit('create_room', (response) => {
-      setRoomButtonPressed(false);
-      if (response.success) {
-        navigate(`/room/${response.roomId}`);
-      } else {
-        alert('Failed to create room');
-      }
-    });
-  };
-
-  const joinRandomRoom = (navigate) => {
-    if (!user) return;
-    if (RoomButtonPressed) return;
-    setRoomButtonPressed(true);
-    socket.emit('join_random_room', (response) => {
-      setRoomButtonPressed(false);
-      if (response.success) {
-        navigate(`/room/${response.roomId}`);
-        socket.emit('get_room_info', response.roomId, ({ isAdmin, gameStarted }) => {
-          setIsRoomAdmin(!!isAdmin);
-          setGameStarted(!!gameStarted);
-        });
-        console.log(
-          "%c[C->S] Joined random room with ID: {response.roomId}",
-          "color: green; font-weight: bold;", response.roomId
-        );
-      } else alert('No public rooms available. Please create a new room.');
-    });
-  };
-
-  const joinRoom = (navigate, formData) => {
-    if (!user) return;
-    if (RoomButtonPressed) return;
-    setRoomButtonPressed(true);
-    const roomField = formData.get("roomId");
-    if (roomField) {
-      socket.emit('join_room', roomField, (response) => {
-        setRoomButtonPressed(false);
-        if (response.success) {
-          navigate(`/room/${roomField}`);
-          socket.emit('get_room_info', roomField, ({ isAdmin, gameStarted }) => {
-            setIsRoomAdmin(!!isAdmin);
-            setGameStarted(!!gameStarted);
-          });
-        } else {
-          let errorMessage = "Join failed";
-          if (response.reason === 'ROOM_NOT_FOUND') errorMessage = "Room not found!";
-          else if (response.reason === 'PRIVATE_GAME') errorMessage = "This game is private";
-          alert(errorMessage);
-        }
-      });
-    }
-  };
-
-  function RoomHandler() {
+function RoomHandler( { leaderboardData }) {
     const { roomCode } = useParams();
     const navigate = useNavigate();
-
-
+    const { user, loading } = useAuth();
+    const [isRoomAdmin, setIsRoomAdmin] = useState(false);
+    const [gameStarted, setGameStarted] = useState(false);
+    
     useEffect(() => {
-      if (!user || !roomCode) {
-        console.log("%c[C->S] User or roomCode not available, cannot join room",
+        if (!user || !roomCode) {
+          console.error("%c[C->S] User or roomCode not available, cannot join room",
           "color: red; font-weight: bold;");
-        navigate('/');
-        return;
-      }
+          navigate('/');
+          return;
+        }
 
-
-        // the function that actually does the emit
         const doJoin = () => {
-          console.log("%c[C→S] Emitting join_room for", "color: green; font-weight: bold;", roomCode);
-          console.log(socket);
-          socket.emit('join_room', roomCode, (response) => {
-            console.log(`%c[C→S] Joined room (RoomHandler) with ID: ${roomCode}`, "color: green; font-weight: bold;");
-            if (response.success) {
-              socket.emit('get_room_info', roomCode, ({ isAdmin, gameStarted }) => {
-                setIsRoomAdmin(!!isAdmin);
-                setGameStarted(!!gameStarted);
-              });
-            } else {
-              let err = response.reason === 'ROOM_NOT_FOUND'
-                ? 'Room not found!'
-                : response.reason === 'PRIVATE_GAME'
-                  ? 'This game is private'
-                  : 'Join failed';
-              alert(err);
-            }
-          });
-          console.log(
-            "%c[C→S] Emitted join_room for",
-            "color: green; font-weight: bold;", roomCode
-          );
+            console.log("%c[C→S] SINGLE EMIT: Emitting join_room for", "color: blue; font-weight: bold;", roomCode);
+            socket.emit('join_room', roomCode, (response) => {
+                if (response.success) {
+                    socket.emit('get_room_info', roomCode, ({ isAdmin, gameStarted }) => {
+                        setIsRoomAdmin(!!isAdmin);
+                        setGameStarted(!!gameStarted);
+                    });
+                } else {
+                    alert('Failed to join room.');
+                    let err = response.reason === 'ROOM_NOT_FOUND'
+                      ? 'Room not found!'
+                      : response.reason === 'PRIVATE_GAME'
+                        ? 'This game is private'
+                        : 'Join failed';
+                    alert(err);
+                    navigate('/');
+                }
+            });
         };
 
         if (socket.connected) {
-          doJoin();
+            doJoin();
         } else {
-          socket.once('connect', doJoin);
-          return () => {
-            socket.off('connect', doJoin);
-          };
+            socket.once('connect', doJoin);
         }
 
-    }, [roomCode, user]);
+        socket.emit('get_leaderboard', roomCode);
+        
+        return () => {
+            socket.off('connect', doJoin);
+            return () => {
+              socket.off('connect', doJoin);
+            };
+        };
+    }, [user, roomCode, navigate]);
 
     useEffect(() => {
-      if (!roomCode || !user) return;
-      console.log("%c[C->S] Loading Game Component room with ID: {roomCode}",
-        "color: green; font-weight: bold;", roomCode);
-      const handleGameStart = () => setGameStarted(true);
-      socket.on('load_game_component', handleGameStart);
-      return () => {
-        socket.off('load_game_component', handleGameStart);
-      };
-    }, [roomCode, user]);
+        const handleGameStart = () => setGameStarted(true);
+        socket.on('load_game_component', handleGameStart);
+        return () => {
+            socket.off('load_game_component', handleGameStart);
+        };
+    }, [user, roomCode]);
 
-    if (!user || loading) return <div>Loading...</div>;
-    if (!roomCode) return <div>Joining room...</div>;
+    useEffect(() => {
+      socket.on('player_disconnected', (data) => {
+        console.log(`${data.nickname} left the game`);
+        toast.info("You are now the admin!", {
+          position: "bottom-right",
+          autoClose: 1000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: false,
+          draggable: true,
+          progress: undefined,
+          theme: "colored",
+          transition: Bounce,
+        });
+      });
+      
+      socket.on('became_admin', () => {
+        setIsRoomAdmin(true);
+        toast.info("You are now the admin!", {
+          position: "bottom-right",
+          autoClose: 1000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: false,
+          draggable: true,
+          progress: undefined,
+          theme: "colored",
+          transition: Bounce,
+        });
+        socket.emit('get_leaderboard', roomId);
+        console.log("You are now the admin!");
+      });
+
+      return () => {
+        socket.off('player_disconnected');
+        socket.off('became_admin');
+      };
+    }, []);
 
     return (
       <>
@@ -195,13 +121,81 @@ function AppContent() {
             players={leaderboardData}
           />
         ) : (
-          <Game roomId={roomCode} socket={socket}/>
+          <Game roomId={roomCode} socket={socket} players={leaderboardData} />
         )}
       </>
     );
-  }
+}
 
-  function HandleRoom() {
+
+function AppContent() {
+  const { user, loading, showNicknamePrompt } = useAuth();
+  const [leaderboardData, setLeaderboardData] = useState({});
+  const [RoomButtonPressed, setRoomButtonPressed] = useState(false);
+  
+  // (S->C) Update Leaderboard with Data, when server emits 'update_leaderboard'
+  useEffect(() => {
+    const handleUpdate = (players) => setLeaderboardData(players);
+    socket.on('update_leaderboard', handleUpdate);
+    return () => {
+      console.log(
+        "%c[S->C] Unmounted: listening for leaderboard data",
+        "color: red; font-weight: bold;"
+      );
+      socket.off('update_leaderboard', handleUpdate);
+    };
+  }, []);
+
+
+  useEffect(() => {
+    const handleAuthChange = async () => {
+      await updateSocketAuth();
+    };
+
+    if (user) handleAuthChange();
+  }, [user]);
+
+  const joinRoom = (navigate, formData) => {
+      if (!user) return;
+      if (RoomButtonPressed) return;
+      setRoomButtonPressed(true);
+      const roomField = formData.get("roomId");
+      if (roomField) {
+        setRoomButtonPressed(false);
+        navigate(`/room/${roomField}`);
+      }
+  };
+
+    const joinRandomRoom = (navigate) => {
+        if (!user || RoomButtonPressed) return;
+        setRoomButtonPressed(true);
+        socket.emit('join_random_room', (response) => {
+            setRoomButtonPressed(false);
+            if (response.success) {
+                // The ONLY thing it does on success is navigate.
+                navigate(`/room/${response.roomId}`);
+            } else {
+                alert('No public rooms available.');
+            }
+        });
+    };
+
+    const createRoom = (navigate) => {
+        if (!user || RoomButtonPressed) return;
+        setRoomButtonPressed(true);
+        socket.emit('create_room', (response) => {
+            setRoomButtonPressed(false);
+            if (response.success) {
+                // Navigate on success.
+                navigate(`/room/${response.roomId}`);
+            } else {
+                alert('Failed to create room');
+            }
+        });
+    };
+
+
+  function ShowRoomButtons() {
     const navigate = useNavigate();
     return (
       <div className="min-h-screen bg-blue-50 flex items-center justify-center p-4">
@@ -245,21 +239,7 @@ function AppContent() {
     );
   }
 
-  useEffect(() => {
-    socket.on('player_disconnected', (data) => {
-      console.log(`${data.nickname} left the game`);
-    });
-    
-    socket.on('became_admin', () => {
-      setIsRoomAdmin(true);
-      console.log("You are now the admin!");
-    });
 
-    return () => {
-      socket.off('player_disconnected');
-      socket.off('became_admin');
-    };
-  }, []);
 
   if (loading) return <div>Loading…</div>;
   if (showNicknamePrompt) return <NicknamePrompt />;
@@ -281,10 +261,10 @@ function AppContent() {
           transition={Bounce}
           />
         <Routes>
-          <Route path="/" element={<HandleRoom />} />
+          <Route path="/" element={<ShowRoomButtons />} />
           <Route path="/room/:roomCode" element={
             <>
-              <RoomHandler />
+              <RoomHandler leaderboardData={leaderboardData} />
             </>
           }/>
         </Routes>
