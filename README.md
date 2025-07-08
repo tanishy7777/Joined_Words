@@ -1,7 +1,7 @@
 # Joined_Words
 This repo adds multiplayer functionality to the Joined Words Game
 
-v0.4.0
+v1.0.0
 
 Features:
 - Adds Admin Reassignment
