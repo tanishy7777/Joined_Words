@@ -40,6 +40,29 @@ export default function QuestionAnswer(props){
                 setField("");
             }
         }
+
+        useEffect(() => {
+            function handlePlayerSync(data) {
+                console.log("Player state sync received:", data);
+                // data.score is handled by the parent component, but we can handle the cards here.
+                if (data.answer1) {
+                    setAnswer1(data.answer1);
+                    setFlipped1(true);
+                }
+                if (data.answer2) {
+                    setAnswer2(data.answer2);
+                    setFlipped2(true);
+                }
+            }
+
+            props.socket.on("player_state_sync", handlePlayerSync);
+
+            return () => {
+                // ... your other cleanup functions ...
+                props.socket.off("player_state_sync", handlePlayerSync);
+            };
+        }, [props.socket]); // Add props.socket to dependency array if your linter suggests it
+
         useEffect(() => {
             props.socket.on("check_clue1_answer", setClue1Result);
             props.socket.on("check_clue2_answer", setClue2Result);
@@ -83,7 +106,7 @@ export default function QuestionAnswer(props){
                         timerActiveRef.current = false; // Use ref to track timer state
 
                         // setTimerActive(false); // Stop the timer
-                        props.socket.emit("start_game", gameParams.roomId, gameParams.numOfWords, gameParams.timePerQuestion, true); // Emit the start_game event
+                        props.socket.emit("start_game", gameParams.roomId, gameParams.numOfWords, gameParams.timePerQuestion, true, null); // Emit the start_game event
                     }
                 }, 1000);
             }

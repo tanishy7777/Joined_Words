@@ -3,16 +3,44 @@ import { ClipboardDocumentIcon } from '@heroicons/react/24/outline';
 import ConfigOptions from './ConfigOptions';
 import RoomId from './RoomId';
 import { useAuth } from '../src/contexts/AuthContext';
+import { ToastContainer, toast, Bounce } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+
 
 export default function WaitScreen(props) {
   const { isRoomAdmin, roomId, socket, players } = props;
   const { user } = useAuth();
 
   const copyRoomId = () => {
-    let copyText = `http://localhost:5173/room/${roomId}`;
-    navigator.clipboard.writeText(copyText);
-    // TODO: fire a toast/tooltip to confirm copy
+    let copyText = window.location.href;
+    navigator.clipboard.writeText(copyText)
+    .then(() => {
+        toast.info('Room link copied to clipboard!', {
+        position: "top-center",
+        autoClose: 500,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: false,
+        draggable: true,
+        progress: undefined,
+        theme: "colored",
+        transition: Bounce,
+        });
+    })
+    .catch(() => {
+      toast.error('Failed to copy room link.', {
+        position: "top-center",
+        autoClose: 500,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: false,
+        draggable: true,
+        theme: "colored",
+        transition: Bounce,
+      });
+    });
   };
+
 
   return (
     <div className="min-h-screen bg-blue-50 flex items-center justify-center p-4">

@@ -1,15 +1,62 @@
-import React from 'react';
+import React, {useState} from 'react';
+import { ToastContainer, toast, Bounce } from 'react-toastify';
+// import 'react-toastify/dist/ReactToastify.css';
+const settingLabels = {
+  isPrivateGame: 'Game Type',
+  numOfWords: 'Number of Questions',
+  timePerQuestion: 'Time per Question',
+};
 
 export default function ConfigOptions(props) {
   const { roomId, socket } = props;
+  const [startPressed, setStartPressed] = useState(false);
 
   const handleConfigChange = (setting, value) => {
+    
     socket.emit('update_config', roomId, { [setting]: value });
+    const label = settingLabels[setting] || setting;
+    if (setting === 'isPrivateGame') {
+      value = value ? 'Private' : 'Public';
+    } else if (setting === 'numOfWords') {
+      value = `${value} words`;
+    } else if (setting === 'timePerQuestion') {
+      value = `${value} sec`;
+    }
+    console.log(`Updated: ${setting} = ${value}`);
+    toast.info(<span><b>{label}</b> = {value}</span>, {
+      position: "top-center",
+      autoClose: 1000,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: false,
+      draggable: true,
+      progress: undefined,
+      theme: "colored",
+      transition: Bounce,
+    });
   };
 
   const startGame = (e) => {
     e.preventDefault();
-    socket.emit('start_game', roomId, false);
+    if (startPressed) return;
+    setStartPressed(true);
+    
+    socket.emit('start_game', roomId, false, (response) => {
+      setStartPressed(false);
+      if (response.success) {
+        toast.success('Game started!', {
+          position: "top-center",
+          autoClose: 1000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: false,
+          draggable: true,
+          progress: undefined,
+          theme: "colored",
+          transition: Bounce,
+        });
+      }
+    });
   };
 
   // Tailwind‑friendly helper for radio groups

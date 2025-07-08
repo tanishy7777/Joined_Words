@@ -62,9 +62,12 @@ app.get('/', (req, res) => {
 
 io.use(async (socket, next) => {
   const { uid, nickname } = socket.handshake.auth;
+  console.log(`Socket connection attempt from UID: ${uid}, Nickname: ${nickname}`);
   if (!uid || !nickname) {
+    console.error('Authentication failed: UID or nickname missing');
     return next(new Error('Authentication required'));
   }
+  console.log(`Authenticated user: ${uid}, Nickname: ${nickname}`);
   socket.data.user = { uid, nickname };
   next();
 });
@@ -165,8 +168,9 @@ const playerReconnectionTimers = new Map(); // Track reconnection timers
 
 
 io.on('connection',  async (socket) => {
-  const gameState = await GameStateManager.getAllRooms();
-  console.log('New client connected', gameState);     
+  // const gameState = await GameStateManager.getAllRooms();
+  // NEVER AWAIT HERE!!!!!!
+  console.log('New client connected');     
 
     // Set up the socket data with user info
     socket.on('get_room_info', async (roomId, callback) => {
@@ -270,25 +274,69 @@ io.on('connection',  async (socket) => {
 
     
     socket.on('join_room', async (roomId, callback) => {
-      const { uid, nickname } = socket.data.user;
-      if (!uid) return callback({ success: false, reason: 'NOT_AUTHENTICATED' });
-
+      console.log(`Received 'join_room' for room: ${roomId}`);
+      const { uid, nickname } = socket.handshake.auth;
+      if (!uid) {
+        console.error(`Client ${socket.id} not authenticated`);
+        callback?.({ success: false, reason: 'NOT_AUTHENTICATED' });
+        return;
+      }
 
       const currentState = await GameStateManager.getRoom(roomId);
-      if (!currentState) return callback({ success: false, reason: 'ROOM_NOT_FOUND' });
+      if (!currentState) {
+        console.error(`Room ${roomId} not found for client ${socket.id}`);
+        callback?.({ success: false, reason: 'ROOM_NOT_FOUND' });
+        return;
+      }
 
       // Reconnection: player exists, but not mapped to a socket
       const isReconnection = !!currentState.players[uid] && !currentState.socketMap[uid];
+      console.info(currentState.players, currentState.socketMap, uid);
+      console.log(`Client ${socket.id} is ${isReconnection ? 'reconnecting' : 'joining'} room: ${roomId}`);
       if (isReconnection) {
         // Cancel pending removal timer
         const timerKey = `${uid}_${roomId}`;
         if (playerReconnectionTimers.has(timerKey)) {
           clearTimeout(playerReconnectionTimers.get(timerKey));
           playerReconnectionTimers.delete(timerKey);
+          console.log(`Reconnection grace period cleared for ${nickname} in room ${roomId}`);
         }
         currentState.socketMap[uid] = socket.id;
         await GameStateManager.updateRoom(roomId, currentState);
         socket.join(roomId);
+        // check gameState to see if game has started
+        if (currentState.totalWords !== null) {
+            // Game has started, handle accordingly
+            const currentQuestionIndex = currentState.questionIndex;
+
+            // 2. Construct the question data object
+            const questionData = {
+              questionIndex: currentQuestionIndex,
+              clue1: currentState.data[currentQuestionIndex].clue1,
+              clue2: currentState.data[currentQuestionIndex].clue2,
+              jwclue: currentState.data[currentQuestionIndex].jwclue,
+            };
+            console.log(questionData)
+
+            // 3. Emit the event TO THE RECONNECTING SOCKET with the data
+            io.to(socket.id).emit('get_question_data', questionData);
+
+            // 4. Get the player's specific progress
+            const { uid } = socket.data.user;
+            const cluesAnswered = currentState.cluesAnswered[uid] || [false, false];
+            const [clue1Answered, clue2Answered] = cluesAnswered;
+
+            // 5. Construct a sync object for the player
+            const playerSyncData = {
+              score: currentState.score[uid],
+              // Send the answers only if they've been revealed
+              answer1: clue1Answered ? currentState.data[currentState.questionIndex].answer1 : null,
+              answer2: clue2Answered ? currentState.data[currentState.questionIndex].answer2 : null,
+            };
+
+            // 6. Emit a new event to sync this player's UI
+            io.to(socket.id).emit('player_state_sync', playerSyncData);
+        }
         io.to(roomId).emit('update_leaderboard', currentState.players);
         return callback?.({ success: true, isReconnection: true });
       }
@@ -313,7 +361,7 @@ io.on('connection',  async (socket) => {
       await GameStateManager.updateRoom(roomId, currentState);
       socket.join(roomId);
       io.to(roomId).emit('update_leaderboard', currentState.players);
-      callback?.({ success: true });
+      callback?.({ success: true, isNewPlayer: true });
     });
 
 
@@ -349,12 +397,22 @@ io.on('connection',  async (socket) => {
       }
 });
 
-    socket.on('start_game', async (roomId, isLoop) => {
+    socket.on('start_game', async (roomId, isLoop, callback) => {
         const gameState = await GameStateManager.getRoom(roomId);
-        if (!gameState) return;
+        if (!gameState) {
+          if (typeof callback === 'function') {
+            return callback({ success: false, reason: 'ROOM_NOT_FOUND' });
+          }
+          return;
+        }
 
         const { uid } = socket.data.user;
-        if (!uid) return;
+        if (!uid) {
+          if (typeof callback === 'function') {
+            return callback({ success: false, reason: 'NOT_AUTHENTICATED' });
+          }
+          return;
+        }
 
         let { numOfWords = 3, timePerQuestion = 1, isPrivateGame = false } = gameState;
 
@@ -364,13 +422,15 @@ io.on('connection',  async (socket) => {
             await GameStateManager.updateRoom(roomId, gameState);
         }
 
+        
         const questionData = {
-            questionIndex: gameState.totalWords - numOfWords,
-            clue1: gameState.data[gameState.totalWords - numOfWords].clue1,
-            clue2: gameState.data[gameState.totalWords - numOfWords].clue2,
-            jwclue: gameState.data[gameState.totalWords - numOfWords].jwclue,
+          questionIndex: gameState.totalWords - numOfWords,
+          clue1: gameState.data[gameState.totalWords - numOfWords].clue1,
+          clue2: gameState.data[gameState.totalWords - numOfWords].clue2,
+          jwclue: gameState.data[gameState.totalWords - numOfWords].jwclue,
         };
-
+        
+        
         gameState.questionIndex = gameState.totalWords - numOfWords;
         numOfWords--;
         gameState.numOfWords = numOfWords;
@@ -384,6 +444,9 @@ io.on('connection',  async (socket) => {
             io.to(roomId).emit('get_score', gameState.score[uid]);
         }, 10);
 
+        if (typeof callback === 'function') {
+          callback({ success: true });
+        }
         io.to(roomId).emit('game_started', countdownTime);
 
         const gameInterval = setInterval(async () => {
@@ -520,10 +583,12 @@ async function cleanupPlayerDisconnect(socket, roomId, uid, nickname, isReload =
       playerReconnectionTimers.set(timerKey, timer);
       socket.leave(roomId);
       return;
+    }else{
+      console.log('Not a reload, removing player immediately:', nickname);
+      await actuallyRemovePlayer(roomId, uid, nickname);
+      socket.leave(roomId);
     }
     
-    await actuallyRemovePlayer(roomId, uid, nickname);
-    socket.leave(roomId);
     
   } catch (error) {
     console.error(`Error cleaning up player ${uid} from room ${roomId}:`, error);
@@ -608,24 +673,19 @@ async function actuallyRemovePlayer(roomId, uid, nickname) {
 socket.on('disconnecting', async (reason) => {
     const { uid, nickname } = socket.data.user || {};
     if (!uid) {
-      console.log('Client disconnecting (unauthenticated)');
       return;
     }
 
-    // console.log(`Client disconnecting: ${nickname} (${uid}), reason: ${reason}`);
-    
     // Detect if this is likely a page reload vs tab close
     const isReload = reason === 'transport close' || reason === 'client namespace disconnect';
     if(isReload){
       console.log(`Detected page reload for ${nickname} (${uid})`);
     }
     const currentRooms = Array.from(socket.rooms).filter(room => room !== socket.id);
-    // console.log(`Player ${nickname} (${uid}) disconnecting from rooms:`, currentRooms);
     
     for (const roomId of currentRooms) {
       await cleanupPlayerDisconnect(socket, roomId, uid, nickname, isReload);
     }
-
 });
 
 // Keep this for logging (optional)
