@@ -170,7 +170,45 @@ const playerReconnectionTimers = new Map(); // Track reconnection timers
 io.on('connection',  async (socket) => {
   // const gameState = await GameStateManager.getAllRooms();
   // NEVER AWAIT HERE!!!!!!
-  console.log('New client connected');     
+  console.log('New client connected');    
+  
+  
+    
+    // In server.js
+
+io.on('connection', (socket) => {
+    socket.on('request_initial_game_state', async (roomId) => {
+        console.log(`Socket ${socket.id} is requesting initial state for room ${roomId}`);
+        const { uid } = socket.data.user || {};
+        const currentState = await GameStateManager.getRoom(roomId);
+
+        if (!currentState || !uid || currentState.totalWords === null) {
+            console.error("Failed to provide initial state: game not running or invalid state.");
+            return;
+        }
+
+        // This is the SAME logic that used to be in the 'join_room' handler
+        const currentQuestionIndex = currentState.questionIndex;
+        const questionData = {
+          questionIndex: currentQuestionIndex,
+          clue1: currentState.data[currentQuestionIndex].clue1,
+          clue2: currentState.data[currentQuestionIndex].clue2,
+          jwclue: currentState.data[currentQuestionIndex].jwclue,
+        };
+        
+        const cluesAnswered = currentState.cluesAnswered[uid] || [false, false];
+        const [clue1Answered, clue2Answered] = cluesAnswered;
+        const playerSyncData = {
+          score: currentState.score[uid],
+          answer1: clue1Answered ? currentState.data[currentQuestionIndex].answer1 : null,
+          answer2: clue2Answered ? currentState.data[currentQuestionIndex].answer2 : null,
+        };
+
+        io.to(socket.id).emit('get_question_data', questionData);
+        io.to(socket.id).emit('player_state_sync', playerSyncData);
+        io.to(socket.id).emit('get_score', currentState.score[uid]);
+      });
+    });
 
     // Set up the socket data with user info
     socket.on('get_room_info', async (roomId, callback) => {
@@ -289,12 +327,12 @@ io.on('connection',  async (socket) => {
         return;
       }
 
+      const isAdmin = currentState.admin === uid;
+      const gameStarted = currentState.totalWords !== null;
+
       // Reconnection: player exists, but not mapped to a socket
       const isReconnection = !!currentState.players[uid] && !currentState.socketMap[uid];
-      console.info(currentState.players, currentState.socketMap, uid);
-      console.log(`Client ${socket.id} is ${isReconnection ? 'reconnecting' : 'joining'} room: ${roomId}`);
       if (isReconnection) {
-        // Cancel pending removal timer
         const timerKey = `${uid}_${roomId}`;
         if (playerReconnectionTimers.has(timerKey)) {
           clearTimeout(playerReconnectionTimers.get(timerKey));
@@ -304,47 +342,25 @@ io.on('connection',  async (socket) => {
         currentState.socketMap[uid] = socket.id;
         await GameStateManager.updateRoom(roomId, currentState);
         socket.join(roomId);
-        // check gameState to see if game has started
-        if (currentState.totalWords !== null) {
-            // Game has started, handle accordingly
-            const currentQuestionIndex = currentState.questionIndex;
-
-            // 2. Construct the question data object
-            const questionData = {
-              questionIndex: currentQuestionIndex,
-              clue1: currentState.data[currentQuestionIndex].clue1,
-              clue2: currentState.data[currentQuestionIndex].clue2,
-              jwclue: currentState.data[currentQuestionIndex].jwclue,
-            };
-            console.log(questionData)
-
-            // 3. Emit the event TO THE RECONNECTING SOCKET with the data
-            io.to(socket.id).emit('get_question_data', questionData);
-
-            // 4. Get the player's specific progress
-            const { uid } = socket.data.user;
-            const cluesAnswered = currentState.cluesAnswered[uid] || [false, false];
-            const [clue1Answered, clue2Answered] = cluesAnswered;
-
-            // 5. Construct a sync object for the player
-            const playerSyncData = {
-              score: currentState.score[uid],
-              // Send the answers only if they've been revealed
-              answer1: clue1Answered ? currentState.data[currentState.questionIndex].answer1 : null,
-              answer2: clue2Answered ? currentState.data[currentState.questionIndex].answer2 : null,
-            };
-
-            // 6. Emit a new event to sync this player's UI
-            io.to(socket.id).emit('player_state_sync', playerSyncData);
-        }
         io.to(roomId).emit('update_leaderboard', currentState.players);
-        return callback?.({ success: true, isReconnection: true });
+        
+        return callback?.({ 
+            success: true, 
+            isReconnection: true,
+            gameStarted: gameStarted,
+            isAdmin: isAdmin
+        });
       }
 
       // Already present and connected: do nothing (idempotent)
       if (currentState.players[uid] && currentState.socketMap[uid]) {
         socket.join(roomId);
-        return callback?.({ success: true, alreadyPresent: true });
+        return callback?.({ 
+          success: true,
+          alreadyPresent: true,
+          gameStarted: gameStarted,
+          isAdmin: isAdmin
+        });
       }
 
       // New player
@@ -361,7 +377,12 @@ io.on('connection',  async (socket) => {
       await GameStateManager.updateRoom(roomId, currentState);
       socket.join(roomId);
       io.to(roomId).emit('update_leaderboard', currentState.players);
-      callback?.({ success: true, isNewPlayer: true });
+      callback?.({ 
+        success: true, 
+        isNewPlayer: true,
+        gameStarted: gameStarted,
+        isAdmin: isAdmin
+      });
     });
 
 

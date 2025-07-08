@@ -31,10 +31,10 @@ function RoomHandler( { leaderboardData }) {
             console.log("%c[C→S] SINGLE EMIT: Emitting join_room for", "color: blue; font-weight: bold;", roomCode);
             socket.emit('join_room', roomCode, (response) => {
                 if (response.success) {
-                    socket.emit('get_room_info', roomCode, ({ isAdmin, gameStarted }) => {
-                        setIsRoomAdmin(!!isAdmin);
-                        setGameStarted(!!gameStarted);
-                    });
+                    console.log("Join successful, setting initial state:", response);
+                    console.log("isAdmin:", response.isAdmin, response);
+                    setIsRoomAdmin(!!response.isAdmin);
+                    setGameStarted(!!response.gameStarted);
                 } else {
                     alert('Failed to join room.');
                     let err = response.reason === 'ROOM_NOT_FOUND'

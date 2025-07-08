@@ -16,8 +16,6 @@ export default function QuestionAnswer(props){
 
         const [roomId, setRoomId] = useState(props.roomId);
         const [newWordTimer, setNewWordTimer] = useState(10);    
-        // const [timerActive, setTimerActive] = useState(false);
-
         const timerActiveRef = useRef(false);
 
         function setClue1Result(clue1Answer){
@@ -80,6 +78,8 @@ export default function QuestionAnswer(props){
 
 
         useEffect(()=>{
+            props.socket.emit('request_initial_game_state', props.roomId);
+
             function populateQuestionData(questionData) {
                 setQuestionIndex(questionData.questionIndex);
                 setClue1(questionData.clue1);
@@ -88,6 +88,19 @@ export default function QuestionAnswer(props){
                 console.log("Question data received:", questionData);
             }
             props.socket.on("get_question_data", populateQuestionData);
+
+            function handlePlayerSync(data) {
+                console.log("✅ Player state sync received:", data);
+                if (data.answer1) {
+                    setAnswer1(data.answer1);
+                    setFlipped1(true);
+                }
+                if (data.answer2) {
+                    setAnswer2(data.answer2);
+                    setFlipped2(true);
+                }
+            }
+            props.socket.on("player_state_sync", handlePlayerSync);
             
 
             function updateUI(gameParams) {
@@ -143,6 +156,7 @@ export default function QuestionAnswer(props){
 
             return () => {
                 props.socket.off("get_question_data", populateQuestionData);
+                props.socket.off("player_state_sync", handlePlayerSync);
                 props.socket.off("check_clue1_answer", setClue1Result);
                 props.socket.off("check_clue2_answer", setClue2Result);
                 props.socket.off("end_game", endGame);
