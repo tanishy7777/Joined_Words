@@ -42,9 +42,13 @@ export default function WaitScreen(props) {
             <p className="mt-2 text-sm text-blue-700 italic">
               How to play?
             </p>
-            <p className="mt-1 text-blue-800">
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit...
-            </p>
+           <p className="mt-1 text-blue-800">
+            You’ll see two clues and a clue for the <b>joined word</b> each round. Solve the two clues to get Answer 1 and Answer 2,
+            then merge them into one joined word (e.g. Taste + Buds → <em>Tastebuds</em>).
+            Submit your joined word before time runs out to score points. Difficulty levels (Easy/Medium/Hard) indicate how tricky 
+            the puzzle is.
+          </p>
+
           </div>
 
           {/* Config Panel (admins only) */}
