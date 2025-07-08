@@ -8,7 +8,6 @@ import { socket, updateSocketAuth } from './socket';
 import Game from './components/Game';
 import WaitScreen from './components/WaitScreen';
 import NicknamePrompt from './components/NicknamePrompt';
-import { use } from 'react';
 
 
 
@@ -168,13 +167,13 @@ function AppContent() {
   }, []);
 
 
-  useEffect(() => {
-    const handleAuthChange = async () => {
-      await updateSocketAuth();
-    };
+  // useEffect(() => {
+  //   const handleAuthChange = async () => {
+  //     await updateSocketAuth();
+  //   };
 
-    if (user) handleAuthChange();
-  }, [user]);
+  //   if (user) handleAuthChange();
+  // }, [user]);
 
   const joinRoom = (navigate, formData) => {
       if (!user) return;

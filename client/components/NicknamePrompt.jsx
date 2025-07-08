@@ -3,7 +3,6 @@ import { useAuth } from '../src/contexts/AuthContext';
 
 export default function NicknamePrompt() {
   const [nickname, setNickname] = useState('');
-  const [authMethod, setAuthMethod] = useState('anonymous');
   const [submitPressed, setSubmitPressed] = useState(false);
   const { signInAnonymouslyWithNickname, setShowNicknamePrompt } = useAuth();
 
@@ -17,7 +16,7 @@ export default function NicknamePrompt() {
 
     try {
       await signInAnonymouslyWithNickname(nickname.trim());
-      setShowNicknamePrompt(false); 
+      // setShowNicknamePrompt(false); 
     } catch (error) {
       toast.error("Failed to create guest account. Please try again.", {
           position: "bottom-right",

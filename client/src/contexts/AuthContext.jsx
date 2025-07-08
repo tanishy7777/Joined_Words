@@ -1,13 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { 
-  signInAnonymously, 
-  signInWithPopup, 
-  GoogleAuthProvider, 
-  updateProfile,
-  onAuthStateChanged 
-} from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { signInAnonymously, updateProfile, onAuthStateChanged } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
+import { updateSocketAuth } from '../../socket'; // Ensure this is the correct path to your socket file
 
 const AuthContext = createContext();
 
@@ -32,6 +27,12 @@ export const AuthProvider = ({ children }) => {
       await updateProfile(user, {
         displayName: nickname
       });
+
+      const updatedUser = { ...user, displayName: nickname };
+      setUser(updatedUser);
+      setShowNicknamePrompt(false);
+
+      await updateSocketAuth(updatedUser); 
       
       await setDoc(doc(db, 'users', user.uid), {
         uid: user.uid,
@@ -50,36 +51,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const signInWithGoogle = async () => {
-    try {
-      const provider = new GoogleAuthProvider();
-      const userCredential = await signInWithPopup(auth, provider);
-      const user = userCredential.user;
-      
-      const userDocRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userDocRef);
-      
-      if (!userDoc.exists()) {
-        await setDoc(userDocRef, {
-          uid: user.uid,
-          nickname: user.displayName,
-          displayName: user.displayName,
-          email: user.email,
-          photoURL: user.photoURL,
-          createdAt: new Date(),
-          isAnonymous: false,
-          gamesPlayed: 0,
-          totalScore: 0
-        });
-      }
-      
-      return user;
-    } catch (error) {
-      console.error('Google sign-in failed:', error);
-      throw error;
-    }
-  };
-
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
@@ -89,6 +60,7 @@ export const AuthProvider = ({ children }) => {
           setShowNicknamePrompt(false);
         }
         setUser(currentUser);
+        await updateSocketAuth(currentUser);
       } else {
         setShowNicknamePrompt(true);
         setUser(null);
@@ -105,7 +77,6 @@ export const AuthProvider = ({ children }) => {
     showNicknamePrompt,
     setShowNicknamePrompt,
     signInAnonymouslyWithNickname,
-    signInWithGoogle
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

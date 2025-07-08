@@ -20,15 +20,18 @@ socket.on('connect_error', (err) => {
 socket.on('connect', () => {
   console.log('%c[Socket] Successfully connected!', 'color: blue; font-weight: bold;');
 });
-export const updateSocketAuth = async () => {
-  const user = auth.currentUser;
-  if (user) {
-    const token = await user.getIdToken();       
+
+export const updateSocketAuth = async (user) => { 
+  if (user && user.uid && user.displayName) {
+    console.log(`Setting socket auth with Nickname: ${user.displayName}`);
     socket.auth = {
       uid: user.uid,
-      nickname: user.displayName || 'Anonymous'
+      nickname: user.displayName // No more fallback needed
     };
-    socket.connect();                             
+    // Only connect if not already connecting or connected
+    if (!socket.connected) {
+      socket.connect();
+    }
   } else {
     socket.disconnect();
   }
