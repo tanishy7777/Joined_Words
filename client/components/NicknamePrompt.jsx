@@ -4,61 +4,47 @@ import { useAuth } from '../src/contexts/AuthContext';
 export default function NicknamePrompt() {
   const [nickname, setNickname] = useState('');
   const [authMethod, setAuthMethod] = useState('anonymous');
-  const { signInAnonymouslyWithNickname, signInWithGoogle, setShowNicknamePrompt } = useAuth();
+  const [submitPressed, setSubmitPressed] = useState(false);
+  const { signInAnonymouslyWithNickname, setShowNicknamePrompt } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (authMethod === 'anonymous' && nickname.trim()) {
-      try {
-        await signInAnonymouslyWithNickname(nickname.trim());
-        setShowNicknamePrompt(false);
-      } catch (error) {
-        alert('Failed to create account. Please try again.');
-      }
-    } else if (authMethod === 'google') {
-      try {
-        await signInWithGoogle();
-        setShowNicknamePrompt(false);
-      } catch (error) {
-        alert('Failed to sign in with Google. Please try again.');
-      }
+    if (!nickname.trim() || submitPressed) {
+      return;
+    }
+
+    setSubmitPressed(true);
+
+    try {
+      await signInAnonymouslyWithNickname(nickname.trim());
+      setShowNicknamePrompt(false); 
+    } catch (error) {
+      toast.error("Failed to create guest account. Please try again.", {
+          position: "bottom-right",
+          autoClose: 1000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: false,
+          draggable: true,
+          progress: undefined,
+          theme: "colored",
+          transition: Bounce,
+        });
+    } finally {
+      setSubmitPressed(false);
     }
   };
 
-  return (
-  <div className="min-h-screen bg-blue-50 flex items-center justify-center p-4">
-    <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-6 space-y-6">
-      <div className="text-center">
-        <h2 className="text-2xl font-bold text-blue-900">Welcome to Joined Words!</h2>
-        <p className="mt-2 text-sm text-blue-700">Choose how you'd like to sign in:</p>
-      </div>
 
-      {/* Auth Methods */}
-      <div className="flex justify-center space-x-4">
-        <button
-          className={`px-4 py-2 rounded-lg font-medium transition ${
-            authMethod === 'anonymous'
-              ? 'bg-blue-800 text-white'
-              : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
-          }`}
-          onClick={() => setAuthMethod('anonymous')}
-        >
-          Play as Guest
-        </button>
-        <button
-          className={`px-4 py-2 rounded-lg font-medium transition ${
-            authMethod === 'google'
-              ? 'bg-blue-800 text-white'
-              : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
-          }`}
-          onClick={() => setAuthMethod('google')}
-        >
-          Sign in with Google
-        </button>
-      </div>
+ return (
+    <div className="min-h-screen bg-blue-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg p-6 space-y-6">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-blue-900">Welcome to Joined Words!</h2>
+          <p className="mt-2 text-sm text-blue-700">Enter a nickname to get started.</p>
+        </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {authMethod === 'anonymous' && (
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <input
               type="text"
@@ -70,17 +56,16 @@ export default function NicknamePrompt() {
               className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
             />
           </div>
-        )}
 
-        <button
-          type="submit"
-          className="w-full bg-blue-800 text-white py-2 rounded-lg font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
-        >
-          {authMethod === 'anonymous' ? 'Start Playing' : 'Continue with Google'}
-        </button>
-      </form>
+          <button
+            type="submit"
+            disabled={submitPressed}
+            className="w-full bg-blue-800 text-white py-2 rounded-lg font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {submitPressed ? 'Joining...' : 'Start Playing'}
+          </button>
+        </form>
+      </div>
     </div>
-  </div>
-);
-
+  );
 }

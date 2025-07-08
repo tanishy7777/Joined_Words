@@ -111,6 +111,27 @@ function RoomHandler( { leaderboardData }) {
       };
     }, []);
 
+    useEffect(() => {
+      const handleGameEnd = () => {
+          console.log("Game has officially ended. Navigating back to home screen.");
+          
+          toast.success("Game Over! Thanks for playing.", {
+              position: "top-center",
+              autoClose: 2000,
+          });
+
+          setTimeout(() => {
+              navigate('/');
+          }, 2500); 
+      };
+
+      socket.on('end_game', handleGameEnd);
+
+      return () => {
+          socket.off('end_game', handleGameEnd);
+      };
+    }, [navigate]);
+    
     return (
       <>
         {!gameStarted ? (

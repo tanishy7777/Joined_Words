@@ -4,6 +4,7 @@ import { socket } from "../socket";
 import Leaderboard from "./Leaderboard";
 import { useAuth } from "../src/contexts/AuthContext";
 import RoomId from "./RoomId";
+import { toast } from "react-toastify";
 
 export default function Game(props) {
     const [timer, setTimer] = useState(null);
@@ -35,18 +36,11 @@ export default function Game(props) {
         }
         props.socket.on('score_update', updateScore);
 
-        function endGame(){
-            console.log('Game ended');
-        }
-
-        props.socket.on('end_game', endGame);
-    
         return () => {
           props.socket.off('game_started', startTimer);
           props.socket.off('update_timer', updateTimer);
           props.socket.off('get_score', setInitialScore);
           props.socket.off('score_update', updateScore);
-          props.socket.off('end_game', endGame);
         };
       }, [props.socket]);
 
