@@ -1,6 +1,15 @@
 # Joined_Words
 This repo adds multiplayer functionality to the Joined Words Game
 
+v0.4.0
+
+Features:
+- Adds Admin Reassignment
+- UI improvement: Added toasts for various events like when, player leaves, admin reassignment, gameconfig changed, etc
+
+Bug Fixes:
+- On reloading, state is restored properlly.
+
 v0.3.0
 
 https://github.com/user-attachments/assets/4f20cb08-a711-414c-b35b-ac622ba2b018
