@@ -7,6 +7,9 @@ Features:
 - Adds Admin Reassignment
 - UI improvement: Added toasts for various events like when, player leaves, admin reassignment, gameconfig changed, etc
 
+Minor Changes:
+- Prevent user from pressing a button more than once after he has pressed it. (This ensures backend dosent receive same requests more than once)
+
 Bug Fixes:
 - On reloading, state is restored properlly.
 
