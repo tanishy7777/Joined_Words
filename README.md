@@ -2,7 +2,7 @@
 Adds scalable, real-time multiplayer functionality, room management, and live leaderboards to the original Joined Words Game ([here](https://jw-daily.web.app/)).
 
 ## Game Demo
-(This video is sped up to save time. Unmute for the best experience!)
+(This video is sped up to save time. **Unmute** for the best experience!)
 
 https://github.com/user-attachments/assets/5e8c476d-22b2-482e-9281-477b76bea504
 
