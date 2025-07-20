@@ -1,11 +1,18 @@
 # 🧩 Joined Words – Multiplayer Real-time Game
 Adds scalable, real-time multiplayer functionality, room management, and live leaderboards to the original Joined Words Game ([here](https://jw-daily.web.app/)).
 
+## Game Demo
+(This video is sped up to save time. Unmute for the best experience!)
+
+https://github.com/user-attachments/assets/5e8c476d-22b2-482e-9281-477b76bea504
+
+
+
 ## 📦 Overview
 ✨ **Features:**
 - 🏠 **Dynamic multi-room creation** – supports multiple active game rooms running in parallel
 - 🏆 **Live leaderboards & scoring** – real-time updates
-- 🛡️ **Fault tolerance under network interruptions** – automatic **Admin reassignment** when the current admin leaves
+- 🛡️ **Admin Reassignment** – automatic **Admin reassignment** when the current admin leaves
 - 🔗 **Copy room link** feature for quick invites and smoother onboarding
 - 📢 **UI enhancements** – toast notifications for events like player leaving, admin reassignment, and config changes
 - 🔄 **Gamestate persistence** – restores player sessions after reloads
